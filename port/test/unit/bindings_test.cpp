@@ -482,7 +482,7 @@ void modernPreset()
               bound.key.extended,
           "W: forward, as the grey up");
     check(!worldCode('w', &code), "and no w for the world");
-    check(worldCode('e', &code) && code == 's', "E: the selection of items");
+    check(worldCode('n', &code) && code == 's', "N: the selection of items");
     check(controlKey(keyOf(0x1e, 0, KEY_CONTROL | KEY_LEFT_CONTROL, 1), &bound) && bound.action == Action::ROLL_LEFT,
           "Ctrl+A: the roll to the left");
     /* Ctrl+A's Ctrl is its own, not the roll's (whose Ctrl+Insert does

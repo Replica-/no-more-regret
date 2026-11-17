@@ -14,6 +14,7 @@
 #include "screen.h"
 #include "pc.h"
 #include "png.h"
+#include "overlayshapes.h"
 #include "supervga.h"
 
 #include <iterator>
@@ -319,17 +320,27 @@ bool writeScreen(const std::string &path)
     if (!viewWideScreen(view)) {
         return false;
     }
-    if (view.bits == 8) {
+    /* The overlay over it, when the game draws one (overlayshapes.h). */
+    Overlay overlay;
+    gatherOverlay(overlay);
+    if (view.bits == 8 && overlay.shapes.empty()) {
         return writePng(path, view.pixels, view.width, view.height, view.pitch, view.palette);
     }
     std::vector<u8> rgb;
     rgb.reserve(static_cast<size_t>(view.width) * view.height * 3);
     for (u16 y = 0; y < view.height; y++) {
         for (u16 x = 0; x < view.width; x++) {
-            const u32 c = viewColour(view, x, y);
+            u32 c;
+            if (view.bits == 8) {
+                const u8 *colour = &view.palette[view.pixels[(static_cast<size_t>(y) * view.pitch) + x] * 3];
+                c = static_cast<u32>(colour[0]) << 16 | colour[1] << 8 | colour[2];
+            } else {
+                c = viewColour(view, x, y);
+            }
             rgb.insert(rgb.end(), {static_cast<u8>(c >> 16), static_cast<u8>(c >> 8), static_cast<u8>(c)});
         }
     }
+    paintOverlay(overlay, rgb.data(), view.width, view.height, view.sides);
     return writePngRgb(path, rgb.data(), view.width, view.height);
 }
 

@@ -70,6 +70,9 @@ GROUPS = {
     'file': 'file fastflex filepars filespec flex flexedit tagflex',
     'cache': 'cache cacheblk cachehnd flexhand handler shaphand',
     'system': 'system halt random utility common diskfree hyperdsk cprotmem desc linklist pfloat huge profile',
+    # The port's own enhancements (No More Regret's fork): the keyboard and
+    # mouse controls and what they draw.
+    'modern': 'pointer pathwalk hud',
 }
 GROUP = {module: group for group, modules in GROUPS.items() for module in modules.split()}
 # The include path's directories besides the trees (CMakeLists.txt's).

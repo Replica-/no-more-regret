@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <memory>
 #include "world.h"
+#include "pointer.h"
 #include "widesides.h"
 #include "waits.h"
 #include "world_game.h"
@@ -1025,6 +1026,11 @@ void WorldGump::handleMouseMotion(NewGumpEvent *event)
 {
     i16 dx = 0;
 
+    /* The port's pointer mode: the pointer is free (pointer.h). */
+    if ((modes & WORLD_SELECTING) == 0 && pointerMotion(event)) {
+        return;
+    }
+
     if ((hackMover == 0U) && ((modes & WORLD_SELECTING) == 0)) {
         mouseCtl->moveTo(320, 200);
         dx = 320 - event->x;
@@ -1169,6 +1175,10 @@ void WorldGump::fireByMouse(NewGumpEvent *event)
 
 void WorldGump::mouseButton(u8 right, NewGumpEvent *event)
 {
+    /* The port's pointer mode takes the buttons (pointer.h). */
+    if (pointerButton(right, event)) {
+        return;
+    }
     if (event->isMouseRelease()) {
         const Device device = buttonDevices[right];
         const Action action = buttonActions[right];

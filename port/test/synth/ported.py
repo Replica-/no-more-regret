@@ -33,9 +33,9 @@ def variant(make, name, enhanced, same=True):
 
 # The modern keys (bindings_game.cpp GAME_MODERN_BINDINGS): W, A, S and D,
 # C kneels, Space jumps, the mouse turns and fires, its right button readies
-# the weapon, the wheel picks the weapons, E selects, F grabs, G uses, H the
+# the weapon, the wheel picks the weapons, N selects, F grabs, G uses, H the
 # medkit, T the cube, Tab the datalink.
-SCAN = dict(controls.SCAN, a=0x1e, c=0x2e, f=0x21, h=0x23, t=0x14, tab=0x0f, k=0x25)
+SCAN = dict(controls.SCAN, a=0x1e, c=0x2e, f=0x21, h=0x23, t=0x14, tab=0x0f, k=0x25, n=0x31)
 MOUSE_LEFT, MOUSE_RIGHT = 1, 2
 
 
@@ -47,7 +47,7 @@ def modern(game):
         <game>/src/input/bindings_game.cpp GAME_MODERN_BINDINGS: W, S, A
         and D move forward, back and slide; C kneels; Space jumps; the
         mouse's left button fires, its right readies the weapon, the wheel
-        picks the weapons; E selects, F grabs, G uses, H the medkit, T the
+        picks the weapons; N selects, F grabs, G uses, H the medkit, T the
         energy cube, No Regret's Tab the datalink) and the mouse's turns
         (world.cpp WorldGump::handleMouseMotion: its sideways motion turns
         him, its motion up or down is bound to nothing).
@@ -86,7 +86,7 @@ def modern(game):
             The wheel down three times and up once: the next weapons and
             the one before. No record shows it.
         items
-            E, F, G, H and T: the selection, the grab, the item, the
+            N, F, G, H and T: the selection, the grab, the item, the
             medkit, the energy cube. No record shows them.
         datalink
             No Regret's Tab, its datalink, closed by Escape. No record shows
@@ -149,7 +149,7 @@ def modern(game):
         lines.append(f'{frame}\twheel\t1')
         frame += 10
     test('wheel', None, wheel)
-    test('items', None, *[lambda key=key: keys([key], 4) for key in 'efght'])
+    test('items', None, *[lambda key=key: keys([key], 4) for key in 'nfght'])
     if game == 'regret':
         # No Regret's datalink, closed by Escape (No Remorse has none: its
         # Tab jumps and its Escape opens the menu)

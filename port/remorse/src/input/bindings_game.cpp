@@ -97,8 +97,9 @@ const std::size_t GAME_ACTION_DEFAULT_COUNT = std::size(GAME_ACTION_DEFAULTS);
 /* The modern layout: W, A, S and D move and slide, Ctrl with A and D rolls,
  * the mouse turns as the original's (with Ctrl it rolls unless the key
  * settings' MOUSE ROLL is off: bindings.h mouseRoll), the mouse fires and
- * its right button readies the weapon, Space jumps, C kneels, E selects the
- * items about (and chooses among them), F grabs them, G uses the item held,
+ * its right button readies the weapon (the port's pointer mode, pointer.h,
+ * takes both buttons and the forward key), Q and E roll, Space jumps, C
+ * kneels, N selects the items about (E chooses among them), F grabs them, G uses the item held,
  * H the medical kit, T the energy cube, Y the targeting reticle, R readies
  * the weapon, Ctrl+G drops the weapon (Ctrl+D rolls). The other actions keep
  * the original's inputs. */
@@ -107,20 +108,20 @@ const ActionDefault GAME_MODERN_BINDINGS[] = {
     {Action::MOVE_BACK, "down s lstick_down"},
     {Action::SLIDE_LEFT, "delete a lstick_left"},
     {Action::SLIDE_RIGHT, "pagedown d lstick_right"},
-    {Action::ROLL_LEFT, "insert ctrl+a"},
-    {Action::ROLL_RIGHT, "pageup ctrl+d"},
+    {Action::ROLL_LEFT, "insert q ctrl+a"},
+    {Action::ROLL_RIGHT, "pageup e ctrl+d"},
     {Action::KNEEL, "kp5 c pad_down"},
     {Action::FIRE, "kp0 mouse_left mouse_left_double pad_rt"},
-    {Action::JUMP, "j tab space pad_a"},
+    {Action::JUMP, "j space pad_a"},
     {Action::READY_WEAPON, "r mouse_right mouse_right_double pad_y"},
-    {Action::SELECT_ITEMS, "e E"},
+    {Action::SELECT_ITEMS, "n N"},
     {Action::GRAB_ITEMS, "f F"},
     {Action::USE_ITEM, "u U g G pad_x"},
     {Action::USE_MEDKIT, "m M h H pad_up"},
     {Action::USE_ENERGY_CUBE, "t T"},
     {Action::TARGETING_RETICLE, "y Y"},
     {Action::DROP_WEAPON, "ctrl+g"},
-    {Action::PREVIOUS_WEAPON, "q Q wheel_up pad_lb"},
+    {Action::PREVIOUS_WEAPON, "wheel_up pad_lb"},
     {Action::NEXT_WEAPON, "wheel_down pad_rb"},
     {Action::PREVIOUS_ITEM, "i I mouse_x1 pad_left"},
     {Action::NEXT_ITEM, "o O mouse_x2 pad_right"},

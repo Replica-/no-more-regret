@@ -7,6 +7,8 @@
 #include "files.h"
 #include "host.h"
 #include "language.h"
+#include "pointer.h"
+#include "hud.h"
 #include "profile.h"
 #include "screen.h"
 #include "utility.h"
@@ -69,6 +71,7 @@ std::string enhancedText()
     if (debugFeatureKept) {
         text += "debug_feature=true\r\n";
     }
+    text += std::string("pointer=") + (pointerSetting() ? "1" : "0") + "\r\n";
     return text + bindingsText();
 }
 
@@ -129,6 +132,12 @@ std::vector<std::string> readEnhancedText(const std::string &text)
             hostSetFullscreen(trimmed(line.substr(equals + 1)) == "1");
             continue;
         }
+        if (key == "pointer") {
+            /* The keyboard and mouse controls (pointer.h): 0 the
+             * original's mouse; another on. */
+            setPointerSetting(trimmed(line.substr(equals + 1)) != "0");
+            continue;
+        }
         if (key == "debug_feature") {
             /* The debug features: true (or 1); another off. */
             const std::string value = lowered(trimmed(line.substr(equals + 1)));
@@ -153,6 +162,15 @@ void chooseSoundBits(u16 bits)
 void readEnhancedOptions()
 {
     loadBindings();
+    /* What the port's enhancements draw (hud.h). */
+    startHud();
+    /* The port's controls by default: the keyboard and mouse controls
+     * (pointer.h) and the modern keys, which enhanced.cfg's pointer= and
+     * keys= change; the tests' REGRET_ORIGINAL_CONTROLS keeps the
+     * original's, the controls their results came from. */
+    const bool original = hostEnvironment("REGRET_ORIGINAL_CONTROLS") != nullptr;
+    setPointerSetting(!original);
+    setKeyPreset(original ? KeyPreset::ORIGINAL : KeyPreset::MODERN);
     /* The window's own changes of the full screen (its key) kept. */
     hostFullscreenAction(writeEnhancedOptions);
     if (fileExists(ENHANCED_FILE) == 0) {

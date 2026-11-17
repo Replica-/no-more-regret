@@ -84,6 +84,9 @@ function(game_speed_slow)
   get_property(tests DIRECTORY PROPERTY TESTS)
   if(tests)
     set_property(TEST ${tests} APPEND PROPERTY ENVIRONMENT REGRET_GAME_SPEED=slow)
+    # The original's controls, not the port's pointer mode and modern keys
+    # (world/enhanced.cpp): the controls the results came from.
+    set_property(TEST ${tests} APPEND PROPERTY ENVIRONMENT REGRET_ORIGINAL_CONTROLS=1)
   endif()
 endfunction()
 # A path of the repository as a test's program sees it: a Windows build

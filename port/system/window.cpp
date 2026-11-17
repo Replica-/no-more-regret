@@ -79,6 +79,7 @@
 #include "host.h"
 #include "input.h"
 #include "video.h"
+#include "overlayshapes.h"
 #include "portversion.h"
 #include "profile.h"
 #include "screen.h"
@@ -140,6 +141,8 @@ struct Frame {
     ScreenView view{};
     std::vector<u8> pixels;
     Status status;
+    /* The game's overlay over it (platform/overlay.h). */
+    Overlay overlay;
 };
 /* The last picture the game thread has handed, not yet shown while fresh,
  * and whether its wake is on the way. */
@@ -884,6 +887,7 @@ void copyScreen(Frame &frame)
     frame.view = view;
     /* The copy's, where it is drawn. */
     frame.view.pixels = nullptr;
+    gatherOverlay(frame.overlay);
 }
 
 /* The game thread's: the screen handed to the window thread, which is woken
@@ -1099,6 +1103,120 @@ void drawStatus(const Status &status, const SDL_FRect &frame)
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 }
 
+/* The window thread's: the overlay's shapes (platform/overlay.h) over the
+ * picture at place, the screen's pixels scaled to it, blended. */
+SDL_FColor overlayColour(std::uint32_t colour)
+{
+    return {static_cast<float>(colour >> 24 & 0xff) / 255.0F, static_cast<float>(colour >> 16 & 0xff) / 255.0F,
+            static_cast<float>(colour >> 8 & 0xff) / 255.0F, static_cast<float>(colour & 0xff) / 255.0F};
+}
+
+void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenView &view)
+{
+    if (overlay.shapes.empty()) {
+        return;
+    }
+    const float scale = place.w / static_cast<float>(view.width);
+    const float left = place.x + (static_cast<float>(view.sides) * scale);
+    const auto at = [&](float x, float y) { return SDL_FPoint{left + (x * scale), place.y + (y * scale)}; };
+    std::vector<SDL_Vertex> vertices;
+    const auto corner = [&](SDL_FPoint point, SDL_FColor colour) {
+        vertices.push_back({point, colour, {0, 0}});
+    };
+    const auto quad = [&](SDL_FPoint a, SDL_FPoint b, SDL_FPoint c, SDL_FPoint d, SDL_FColor colour) {
+        for (const SDL_FPoint point : {a, b, c, a, c, d}) {
+            corner(point, colour);
+        }
+    };
+    /* The shapes in their order: the triangles gathered until a picture,
+     * which needs its own texture, then drawn. */
+    const auto flush = [&]() {
+        if (!vertices.empty()) {
+            SDL_RenderGeometry(renderer, nullptr, vertices.data(), static_cast<int>(vertices.size()), nullptr, 0);
+            vertices.clear();
+        }
+    };
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    for (const OverlayShape &shape : overlay.shapes) {
+        const SDL_FColor colour = overlayColour(shape.colour);
+        switch (shape.kind) {
+        case OverlayShape::LINE: {
+            const SDL_FPoint a = at(shape.x[0], shape.y[0]);
+            const SDL_FPoint b = at(shape.x[1], shape.y[1]);
+            const float dx = b.x - a.x;
+            const float dy = b.y - a.y;
+            const float length = std::hypot(dx, dy);
+            if (length <= 0) {
+                break;
+            }
+            /* At least a pixel of the window's wide. */
+            const float half = std::max(shape.width * scale, 1.0F) / 2;
+            const float nx = -dy / length * half;
+            const float ny = dx / length * half;
+            quad({a.x + nx, a.y + ny}, {b.x + nx, b.y + ny}, {b.x - nx, b.y - ny}, {a.x - nx, a.y - ny}, colour);
+            break;
+        }
+        case OverlayShape::BOX: {
+            const SDL_FPoint a = at(shape.x[0], shape.y[0]);
+            const SDL_FPoint b = at(shape.x[0] + shape.x[1], shape.y[0] + shape.y[1]);
+            quad(a, {b.x, a.y}, b, {a.x, b.y}, colour);
+            break;
+        }
+        case OverlayShape::RING:
+        case OverlayShape::DISC: {
+            const SDL_FPoint centre = at(shape.x[0], shape.y[0]);
+            const float radius = shape.radius * scale;
+            const float half = shape.kind == OverlayShape::RING ? std::max(shape.width * scale, 1.0F) / 2 : 0;
+            const int segments = std::clamp(static_cast<int>(radius * 0.8F), 12, 96);
+            for (int i = 0; i < segments; i++) {
+                const float a0 = static_cast<float>(i) * 6.2831853F / static_cast<float>(segments);
+                const float a1 = static_cast<float>(i + 1) * 6.2831853F / static_cast<float>(segments);
+                const float c0 = std::cos(a0);
+                const float s0 = std::sin(a0);
+                const float c1 = std::cos(a1);
+                const float s1 = std::sin(a1);
+                if (shape.kind == OverlayShape::DISC) {
+                    corner(centre, colour);
+                    corner({centre.x + (c0 * radius), centre.y + (s0 * radius)}, colour);
+                    corner({centre.x + (c1 * radius), centre.y + (s1 * radius)}, colour);
+                } else {
+                    const float inner = radius - half;
+                    const float outer = radius + half;
+                    quad({centre.x + (c0 * inner), centre.y + (s0 * inner)},
+                         {centre.x + (c0 * outer), centre.y + (s0 * outer)},
+                         {centre.x + (c1 * outer), centre.y + (s1 * outer)},
+                         {centre.x + (c1 * inner), centre.y + (s1 * inner)}, colour);
+                }
+            }
+            break;
+        }
+        case OverlayShape::TRIANGLE:
+            for (int i = 0; i < 3; i++) {
+                corner(at(shape.x[i], shape.y[i]), colour);
+            }
+            break;
+        case OverlayShape::PICTURE: {
+            flush();
+            SDL_Texture *picture =
+                SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, shape.w, shape.h);
+            if (picture == nullptr) {
+                break;
+            }
+            SDL_UpdateTexture(picture, nullptr, &overlay.pixels[shape.first],
+                              shape.w * static_cast<int>(sizeof(std::uint32_t)));
+            SDL_SetTextureBlendMode(picture, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureScaleMode(picture, SDL_SCALEMODE_LINEAR);
+            const SDL_FPoint a = at(shape.x[0], shape.y[0]);
+            const SDL_FRect box{a.x, a.y, shape.x[1] * scale, shape.y[1] * scale};
+            SDL_RenderTexture(renderer, picture, nullptr, &box);
+            SDL_DestroyTexture(picture);
+            break;
+        }
+        }
+    }
+    flush();
+}
+
 /* The window thread's: the picture shown, not yet on the screen, and the
  * run's state over it unless without. */
 void drawScreen(bool withStatus)
@@ -1124,6 +1242,7 @@ void drawScreen(bool withStatus)
     const bool whole = w % view.width == 0 && h % view.height == 0 && w / view.width == h / view.height;
     SDL_SetTextureScaleMode(texture, whole ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_PIXELART);
     SDL_RenderTexture(renderer, texture, nullptr, &place);
+    drawOverlay(shown.overlay, place, view);
     if (withStatus) {
         drawStatus(shown.status, framePlace(width, height, view.frameWidth));
     }

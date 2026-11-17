@@ -78,7 +78,7 @@ endfunction()
 # is in one of the two trees, so a header is found by its name in either.
 # Borland's library headers from compat first, borland.h before each file,
 # char signed as in the original.
-set(GAME_GROUPS kernel input usecode item game world gump display graph sound movie text file cache system)
+set(GAME_GROUPS kernel input usecode item game world gump display graph sound movie text file cache system modern)
 # The TASM modules in C++, a library of their own: the tests link it
 # without the rest of the game.
 set(ASM_MODULES cacheblk fastfind random framehit shp32 shpm32 shpmr32 shpmt32 shpr32 shpt32 svgaprim view32 bitfield

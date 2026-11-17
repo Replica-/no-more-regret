@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include "gamestate.h"
 #include "crusader.h"
+#include "pointer.h"
 #include "crusader_game.h"
 #include "animcach.h"
 #include "animfrm.h"
@@ -703,7 +704,11 @@ u16 fireWeapon(Item *item, i16 x, i16 y, i16 z, char direction, i16 type, u8 aim
         info.sixteenDirections = 1;
     }
     if (aimed != 0U) {
-        if (item->isControlled()) {
+        if (item->isControlled() && pointerMode()) {
+            /* The port's pointer mode: what is under the pointer, no target
+             * chosen for the player (pointer.h). */
+            target = pointerShotTarget();
+        } else if (item->isControlled()) {
             target = findTarget(item->id, direction, info.sixteenDirections);
         } else if (NPCS_AIM_AT_ATTACK_TARGET && item->isNpc()) {
             target = npcs[shooter.id].attackTarget;

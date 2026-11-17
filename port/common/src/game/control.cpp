@@ -6,6 +6,7 @@
 #include <cstdio>
 #include "gamestate.h"
 #include "control.h"
+#include "pointer.h"
 #include "control_game.h"
 #include "animcach.h"
 #include "animprim.h"
@@ -626,6 +627,8 @@ void Controller::run()
     if ((reticleShown != 0U) && (reticleMoved != 0U)) {
         placeReticle();
     }
+    /* The port's pointer mode (pointer.h). */
+    pointerTick();
 }
 
 void Controller::event(u32 event, EventData data)
@@ -2010,6 +2013,10 @@ void Controller::keyboardRest(KeyEvent *pressed, KeyEvent *bound, Action action,
     if ((worldActive != 0U) && npc.isValid() && (npc.isDead() == 0U) &&
         (!SHAPE_5D6_IS_DEAD || npc.shape() != SHAPE_FROZEN) && (!npc.isSilencer() || (controlledNpc.held == 0U))) {
         if ((firing != 0U) && action == Action::FIRE && (key.pressed != 0U)) {
+            return;
+        }
+        /* The port's pointer mode takes the forward key (pointer.h). */
+        if (pointerKey(key, action)) {
             return;
         }
         handled = move(&key, action);
