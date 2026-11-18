@@ -10,6 +10,7 @@
 #include "itemcach.h"
 #include "itemdata.h"
 #include "overlay.h"
+#include "pointer.h"
 #include "pfloat.h"
 #include "systimer.h"
 #include "type.h"
@@ -216,6 +217,11 @@ u8 reddenedOf(u8 under)
 
 void noteBlood(u16 victim, u16 hitter, u8 direction, i16 damage)
 {
+    /* Part of the port's controls (pointer.h's setting), which the tests'
+     * original controls turn off. */
+    if (!pointerSetting()) {
+        return;
+    }
     if (currentMap != bloodMap) {
         bloodMap = currentMap;
         forget();

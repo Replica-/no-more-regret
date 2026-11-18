@@ -440,7 +440,8 @@ def main():
     ap.add_argument('args', nargs='*')
     ap.add_argument('--missing', action='store_true', help='coverage: list what never ran')
     args = ap.parse_intermixed_args()
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    if hasattr(signal, 'SIGPIPE'):                  # (not on Windows)
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     names = token_names()
     usecode = Usecode(args.flx)
     if args.command == 'check':

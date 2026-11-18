@@ -275,7 +275,7 @@ void startHud()
 
 void noteHit(u16 id, u16 before, u16 after)
 {
-    if (id < 2 || id >= NPCS || after >= before) {
+    if (id < 2 || id >= NPCS || after >= before || !pointerSetting()) {
         return;
     }
     HitBar &bar = hitBars[id];
