@@ -22,7 +22,8 @@ ASSERT_SIZE(KeypadButton, 0x3d);
 
 /* The keypad, gump shape 0Ah (vtable 1480:6bfe). Enter sends the number, or
  * -1 for Escape; with a code, the last four digits are checked against it
- * and a sound tells whether they matched. */
+ * and a sound tells whether they matched. The port lists the codes read on
+ * the terminals to its right (codes.h). */
 class KeypadGump : public NewGump, protected GumpShape {
 public:
     i16 count; /* the digits typed */
@@ -38,6 +39,8 @@ public:
     ~KeypadGump() override;
     void handleCommand(NewGumpEvent *event) override;
     void handleKeyboard(NewGumpEvent *event) override;
+    /* The port's: a click on the codes seen (codes.h) types one in. */
+    void handleLeftButton(NewGumpEvent *event) override;
     void paintSelf(i16 x, i16 y) override;
     /* value from the digits. */
     void computeValue();

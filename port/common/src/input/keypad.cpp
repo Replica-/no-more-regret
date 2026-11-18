@@ -1,5 +1,6 @@
 /* Code119 (13b0:0000-0ad7, file name unknown). See keypad.h. */
 #include "keypad.h"
+#include "codes.h"
 #include "dispatch.h"
 #include "dsfxman.h"
 #include "gametime.h"
@@ -89,6 +90,12 @@ KeypadGump::KeypadGump(i16 wantedCode) : NewGump(NewGumpId(), nullptr, 0), GumpS
     button->bounds.set(39, 98, 65, 123);
     button = new KeypadButton(KEYPAD_ENTER, this);
     button->bounds.set(66, 98, 91, 123);
+    /* The port's list of codes, to the right of the keypad left where it
+     * is. */
+    if (codesWidth() != 0) {
+        bounds.right = static_cast<i16>(bounds.right + codesWidth());
+        eventMask |= EVENT_LEFT_BUTTON;
+    }
     paint(0);
 }
 
@@ -218,9 +225,27 @@ void KeypadGump::computeValue()
     }
 }
 
+void KeypadGump::handleLeftButton(NewGumpEvent *event)
+{
+    if (!event->isMousePress()) {
+        return;
+    }
+    i16 typed[8];
+    const i16 typedCount = codeAt(static_cast<i16>(eventX(event) - dimensions().width()), eventY(event), typed, 8);
+    if (typedCount == 0) {
+        return;
+    }
+    for (count = 0; count < typedCount; count++) {
+        digits[count] = typed[count];
+    }
+    playEffect(SOUND_KEYPAD_DIGIT);
+    paint(0);
+}
+
 void KeypadGump::paintSelf(i16 x, i16 y)
 {
     draw(x, y);
+    paintCodes(static_cast<i16>(x + dimensions().width()), y);
     if (count != 0) {
         GumpShape digit(0xc);
         i16 left = 25;

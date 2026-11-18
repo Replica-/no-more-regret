@@ -3,6 +3,7 @@
 #include "gamestate.h"
 #include <cstring>
 #include "compgump.h"
+#include "codes.h"
 #include "compgump_game.h"
 #include "language.h"
 #include "termgump.h"
@@ -32,6 +33,8 @@ void ComputerGump::unused0000() {}
 
 void showComputerText(const char *text)
 {
+    /* The port's: the codes in it, for the keypad (codes.h). */
+    noteCodes(text);
     freezeWorld();
     /* The world goes on after the gump has closed, the intrinsic's result
      * 0. */
