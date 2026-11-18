@@ -61,4 +61,18 @@ std::uint16_t screenWideWidth();
  * screen's columns in their middle not read; taken at once. Shown beside
  * the screen in mode 101h until another or 0 (the map no longer drawn). */
 void screenShowSides(const std::uint8_t *pixels, std::uint16_t width);
+/* The picture's height with the sides above and below the screen's 480
+ * rows (the port's native resolution: the window's own shape at a whole
+ * scale); 480 when off. */
+std::uint16_t screenWideHeight();
+/* A box of the 640x480 screen, its corners included. */
+struct ScreenBox {
+    std::int16_t left, top, right, bottom;
+};
+/* screenShowSides' for a frame of width x height with the screen in its
+ * middle; moved, count boxes of the screen (the status display's parts)
+ * shown at the frame's bottom (as far below as the screen's bottom is above
+ * the frame's), the frame's pixels shown where they were. */
+void screenShowFrame(const std::uint8_t *pixels, std::uint16_t width, std::uint16_t height, const ScreenBox *moved,
+                     int count);
 #endif

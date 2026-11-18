@@ -342,6 +342,8 @@ u8 statusWasShown;
  * Remorse's takes no argument and always shows it (13e8:0e7d). */
 void freezeWorld(u8 pointer)
 {
+    /* The port's: the pointer back on the screen (pointer.h). */
+    pointerReach(false);
     pauseEffects();
     statusWasShown = statusShown;
     setStatusShown(0);

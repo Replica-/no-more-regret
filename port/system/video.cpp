@@ -20,6 +20,7 @@
 #include <iterator>
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -45,8 +46,12 @@ u8 colours[256][3];
  * screen. */
 std::atomic<u8> wideMode{0};
 std::atomic<u16> wideWidth{WIDE_DEFAULT};
+std::atomic<u16> wideHeight{SCREEN_HEIGHT};
 std::vector<u8> sides;
 u16 sidesWidth = 0;
+u16 sidesHeight = 0;
+/* The screen's boxes shown at the frame's bottom (screenShowFrame). */
+std::vector<ScreenBox> movedBoxes;
 std::vector<u8> widePicture;
 
 void writeScreenAtExit()
@@ -59,6 +64,20 @@ void writeScreenAtExit()
 /* The PNG at the end. */
 [[maybe_unused]] const bool STARTED = [] {
     std::atexit(writeScreenAtExit);
+    return true;
+}();
+
+/* REGRET_FRAME=<width>x<height>: the wide screen's frame without a window
+ * to set it (a script's screens), as a window of that size at a scale of 1
+ * sets it. */
+[[maybe_unused]] const bool FRAME_GIVEN = [] {
+    unsigned width = 0;
+    unsigned height = 0;
+    if (const char *frame = std::getenv("REGRET_FRAME"); frame != nullptr &&
+                                                          std::sscanf(frame, "%ux%u", &width, &height) == 2) {
+        wideWidth = static_cast<u16>(std::clamp<unsigned>(width & ~1U, SCREEN_WIDTH, WIDE_MOST));
+        wideHeight = static_cast<u16>(std::clamp<unsigned>(height & ~1U, SCREEN_HEIGHT, TALL_MOST));
+    }
     return true;
 }();
 
@@ -268,21 +287,40 @@ void setWideWidth(u16 width)
     wideWidth = std::clamp<u16>(static_cast<u16>(width & ~1U), SCREEN_WIDTH, WIDE_MOST);
 }
 
-void screenShowSides(const u8 *pixels, u16 width)
+void setWideHeight(u16 height)
+{
+    wideHeight = std::clamp<u16>(static_cast<u16>(height & ~1U), SCREEN_HEIGHT, TALL_MOST);
+}
+
+u16 wideFrameHeight()
+{
+    return wideMode != 0U ? wideHeight.load() : static_cast<u16>(SCREEN_HEIGHT);
+}
+
+u16 screenWideHeight()
 {
     const SystemSide systemSide;
-    if (pixels == nullptr || width <= SCREEN_WIDTH) {
+    return wideMode != 0U ? wideHeight.load() : static_cast<u16>(SCREEN_HEIGHT);
+}
+
+void screenShowSides(const u8 *pixels, u16 width)
+{
+    screenShowFrame(pixels, width, SCREEN_HEIGHT, nullptr, 0);
+}
+
+void screenShowFrame(const u8 *pixels, u16 width, u16 height, const ScreenBox *moved, int count)
+{
+    const SystemSide systemSide;
+    if (pixels == nullptr || (width <= SCREEN_WIDTH && height <= SCREEN_HEIGHT)) {
         sidesWidth = 0;
+        sidesHeight = 0;
         return;
     }
-    const std::size_t side = (width - 640U) / 2;
-    sides.resize(static_cast<std::size_t>(width) * SCREEN_HEIGHT);
-    for (std::size_t y = 0; y < SCREEN_HEIGHT; y++) {
-        const std::size_t row = y * width;
-        std::memcpy(sides.data() + row, pixels + row, side);
-        std::memcpy(sides.data() + row + side + SCREEN_WIDTH, pixels + row + side + SCREEN_WIDTH, side);
-    }
+    /* All of it: the screen's middle is not read. */
+    sides.assign(pixels, pixels + (static_cast<std::size_t>(width) * height));
+    movedBoxes.assign(moved, moved + count);
     sidesWidth = width;
+    sidesHeight = height;
 }
 
 bool viewWideScreen(ScreenView &view)
@@ -294,22 +332,40 @@ bool viewWideScreen(ScreenView &view)
         return true;
     }
     const u16 width = wideWidth;
+    const u16 height = wideHeight;
     view.frameWidth = width;
-    if (video.mode != VESA_640X480 || sidesWidth != width) {
+    view.frameHeight = height;
+    if (video.mode != VESA_640X480 || sidesWidth != width || sidesHeight != height) {
         return true;
     }
     const std::size_t side = (width - 640U) / 2;
-    widePicture.resize(static_cast<std::size_t>(width) * SCREEN_HEIGHT);
+    const std::size_t top = (height - 480U) / 2;
+    widePicture = sides;
     for (std::size_t y = 0; y < SCREEN_HEIGHT; y++) {
-        const std::size_t row = y * width;
-        std::memcpy(widePicture.data() + row, sides.data() + row, side);
-        std::memcpy(widePicture.data() + row + side, svgaFramebuffer + (y * SCREEN_WIDTH), SCREEN_WIDTH);
-        std::memcpy(widePicture.data() + row + side + SCREEN_WIDTH, sides.data() + row + side + SCREEN_WIDTH, side);
+        std::memcpy(widePicture.data() + ((y + top) * width) + side, svgaFramebuffer + (y * SCREEN_WIDTH),
+                    SCREEN_WIDTH);
+    }
+    /* The boxes moved to the bottom: the frame's pixels where they were,
+     * the screen's at the bottom. */
+    const std::size_t down = height - SCREEN_HEIGHT;
+    for (const ScreenBox &box : movedBoxes) {
+        const int left = std::max<int>(box.left, 0);
+        const int right = std::min<int>(box.right, SCREEN_WIDTH - 1);
+        for (int y = std::max<int>(box.top, 0); y <= std::min<int>(box.bottom, SCREEN_HEIGHT - 1) && left <= right;
+             y++) {
+            const std::size_t at = ((y + top) * width) + side + static_cast<std::size_t>(left);
+            const auto columns = static_cast<std::size_t>(right - left + 1);
+            std::memcpy(widePicture.data() + at, sides.data() + at, columns);
+            std::memcpy(widePicture.data() + ((y + down) * width) + side + static_cast<std::size_t>(left),
+                        svgaFramebuffer + (static_cast<std::size_t>(y) * SCREEN_WIDTH) + left, columns);
+        }
     }
     view.pixels = widePicture.data();
     view.width = width;
+    view.height = height;
     view.pitch = width;
     view.sides = static_cast<u16>(side);
+    view.top = static_cast<u16>(top);
     view.dimmed = wideMode == 2;
     return true;
 }
@@ -340,7 +396,7 @@ bool writeScreen(const std::string &path)
             rgb.insert(rgb.end(), {static_cast<u8>(c >> 16), static_cast<u8>(c >> 8), static_cast<u8>(c)});
         }
     }
-    paintOverlay(overlay, rgb.data(), view.width, view.height, view.sides);
+    paintOverlay(overlay, rgb.data(), view.width, view.height, view.sides, view.top);
     return writePngRgb(path, rgb.data(), view.width, view.height);
 }
 

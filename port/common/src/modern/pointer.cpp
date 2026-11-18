@@ -18,6 +18,9 @@
 #include "kernel.h"
 #include "keyboard.h"
 #include "mousectl.h"
+#include "input.h"
+#include "screen.h"
+#include "status.h"
 #include "newgump.h"
 #include "npc.h"
 #include "spmgr.h"
@@ -65,6 +68,17 @@ const u32 DOUBLE_CLICK_TICKS = 16;
 const i16 DOUBLE_CLICK_PIXELS = 14;
 /* The pointer this close to the Silencer turns him no more. */
 const i16 FACE_DEAD_ZONE = 10;
+
+/* The pointer's reach (pointerReach): the frame's size, and its columns
+ * left of the screen and rows above it, which the driver's place is from;
+ * all 0 for the screen's. */
+struct Reach {
+    i16 left;
+    i16 top;
+    i16 width;
+    i16 height;
+};
+Reach &reach = gameGlobal<Reach>(Reach{});
 
 u32 now()
 {
@@ -162,12 +176,44 @@ bool pointerMode()
 
 i16 pointerScreenX()
 {
-    return mouseCtl != nullptr ? mouseCtl->pointerX : 0;
+    return mouseCtl != nullptr ? static_cast<i16>(mouseCtl->pointerX - reach.left) : 0;
 }
 
 i16 pointerScreenY()
 {
-    return mouseCtl != nullptr ? mouseCtl->pointerY : 0;
+    return mouseCtl != nullptr ? static_cast<i16>(mouseCtl->pointerY - reach.top) : 0;
+}
+
+void pointerReach(bool frame)
+{
+    if (mouseCtl == nullptr) {
+        return;
+    }
+    Reach wanted{};
+    if (frame) {
+        wanted.width = static_cast<i16>(screenWideWidth());
+        wanted.height = static_cast<i16>(screenWideHeight());
+        wanted.left = static_cast<i16>((wanted.width - SCREEN_WIDTH) / 2);
+        wanted.top = static_cast<i16>((wanted.height - SCREEN_HEIGHT) / 2);
+    }
+    if (wanted.left == reach.left && wanted.top == reach.top && wanted.width == reach.width &&
+        wanted.height == reach.height) {
+        return;
+    }
+    /* The pointer kept where it is on the screen. */
+    const i16 x = pointerScreenX();
+    const i16 y = pointerScreenY();
+    reach = wanted;
+    if (frame) {
+        inputMouseXRange(0, static_cast<i16>((wanted.width - 1) * 2));
+        inputMouseYRange(0, static_cast<i16>(wanted.height - 1));
+    } else {
+        inputMouseXRange(0, (SCREEN_WIDTH - 1) * 2);
+        /* showStatus' and hideStatus' */
+        inputMouseYRange(0, statusShown != 0U ? 439 : SCREEN_BOTTOM);
+    }
+    mouseCtl->moveTo(static_cast<i16>(std::clamp<int>(x + reach.left, 0, (frame ? wanted.width : SCREEN_WIDTH) - 1)),
+                     static_cast<i16>(std::clamp<int>(y + reach.top, 0, (frame ? wanted.height : SCREEN_HEIGHT) - 1)));
 }
 
 bool pointerItemInReach(u16 item)
@@ -338,6 +384,7 @@ bool pointerAimPoint(ItemPoint *point)
 
 void pointerTick()
 {
+    pointerReach(pointerMode() && worldFrozen == 0U);
     if (!pointerMode()) {
         buttons.rightDown = 0;
         buttons.rightFiring = 0;

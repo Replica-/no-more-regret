@@ -120,7 +120,7 @@ float edge(float ax, float ay, float bx, float by, float px, float py)
 }
 }
 
-void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int left)
+void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int left, int above)
 {
     for (const OverlayShape &shape : overlay.shapes) {
         float x0;
@@ -156,14 +156,14 @@ void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int le
             y1 = std::max({shape.y[0], shape.y[1], shape.y[2]});
             break;
         }
-        const int top = std::max(0, static_cast<int>(std::floor(y0)));
-        const int bottom = std::min(height - 1, static_cast<int>(std::ceil(y1)));
+        const int top = std::max(0, static_cast<int>(std::floor(y0)) + above);
+        const int bottom = std::min(height - 1, static_cast<int>(std::ceil(y1)) + above);
         const int first = std::max(0, static_cast<int>(std::floor(x0)) + left);
         const int last = std::min(width - 1, static_cast<int>(std::ceil(x1)) + left);
         for (int row = top; row <= bottom; row++) {
             for (int column = first; column <= last; column++) {
                 const float px = static_cast<float>(column - left) + 0.5F;
-                const float py = static_cast<float>(row) + 0.5F;
+                const float py = static_cast<float>(row - above) + 0.5F;
                 u8 *pixel = rgb + ((static_cast<std::size_t>(row) * width + column) * 3);
                 float coverage = 0;
                 std::uint32_t colour = shape.colour;

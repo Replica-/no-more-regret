@@ -18,6 +18,7 @@
 #include "status.h"
 #include "type.h"
 #include "viewport.h"
+#include "widesides.h"
 
 #include <algorithm>
 #include <array>
@@ -25,13 +26,14 @@
 
 namespace {
 
-/* The map of the light: cells of CELL pixels, over the screen and the wide
- * screen's sides (SIDE cells each way, which only the light spreading from
- * the screen reaches). */
+/* The map of the light: cells of CELL pixels, over the screen and the
+ * wide screen's frame round it (SIDE cells each side, ABOVE above and
+ * below, the most the frame has). */
 const int CELL = 8;
-const int SIDE = 27;
+const int SIDE = (WIDE_FRAME_MOST - SCREEN_WIDTH) / 2 / CELL;
+const int ABOVE = (TALL_FRAME_MOST - SCREEN_HEIGHT) / 2 / CELL;
 const int COLUMNS = (SCREEN_WIDTH / CELL) + (2 * SIDE);
-const int ROWS = SCREEN_HEIGHT / CELL;
+const int ROWS = (SCREEN_HEIGHT / CELL) + (2 * ABOVE);
 /* The shade where nothing lights (of 255: about 80 % of the art); a
  * picture's light (GLOWING of its pixels glowing give the full light;
  * fewer than MOST_STRAY are stray pixels of the art, no light); the light
@@ -65,14 +67,17 @@ bool &lightingOn = gameSetting<bool>(false);
 float light[ROWS][COLUMNS];
 std::uint32_t shade[ROWS * COLUMNS];
 
-/* The status display's parts, which are not the world's. */
+/* The status display's parts, which are not the world's: where the screen
+ * has them, or moved down to the frame's bottom (widesides.h). */
 bool overStatus(int x, int y)
 {
     if (statusShown == 0U) {
         return false;
     }
+    const int down = wideStatusDown();
     for (const StatusPart &part : statusParts) {
-        if (x >= part.area.left - CELL && x <= part.area.right && y >= part.area.top - CELL && y <= part.area.bottom) {
+        if (x >= part.area.left - CELL && x <= part.area.right && y >= part.area.top + down - CELL &&
+            y <= part.area.bottom + down) {
             return true;
         }
     }
@@ -141,8 +146,12 @@ const Glow &glowOf(u16 shape, u16 frame)
 /* A light of strength at screen point x,y. */
 void lightAt(float x, float y, float strength)
 {
-    const int column = (static_cast<int>(x) / CELL) + SIDE;
-    const int row = static_cast<int>(y) / CELL;
+    if (x < static_cast<float>(-SIDE * CELL) || y < static_cast<float>(-ABOVE * CELL)) {
+        return;
+    }
+    /* From the map's corner, not below 0: whole cells. */
+    const int column = static_cast<int>(x + static_cast<float>(SIDE * CELL)) / CELL;
+    const int row = static_cast<int>(y + static_cast<float>(ABOVE * CELL)) / CELL;
     if (column < 0 || column >= COLUMNS || row < 0 || row >= ROWS) {
         return;
     }
@@ -176,7 +185,8 @@ void glows()
                 float x;
                 float y;
                 mapToOverlay(itemX[item], itemY[item], itemZ[item], &x, &y);
-                if (x < -SIDE * CELL || x > SCREEN_WIDTH + (SIDE * CELL) || y < -64 || y > SCREEN_HEIGHT + 64) {
+                if (x < -SIDE * CELL || x > SCREEN_WIDTH + (SIDE * CELL) || y < -(ABOVE * CELL) - 64 ||
+                    y > SCREEN_HEIGHT + (ABOVE * CELL) + 64) {
                     continue;
                 }
                 const Glow &glow = glowOf(itemShape[item], Item(item).frame());
@@ -261,7 +271,7 @@ void ownLight()
     for (int row = 0; row < ROWS; row++) {
         for (int column = 0; column < COLUMNS; column++) {
             const float dx = static_cast<float>(((column - SIDE) * CELL) + (CELL / 2)) - x;
-            const float dy = static_cast<float>((row * CELL) + (CELL / 2)) - y;
+            const float dy = static_cast<float>(((row - ABOVE) * CELL) + (CELL / 2)) - y;
             /* The reach squared, without a square root. */
             const float near = 1 - (((dx * dx) + (dy * dy)) / (OWN_REACH * OWN_REACH));
             if (near > 0) {
@@ -294,7 +304,7 @@ void drawLighting()
     for (int row = 0; row < ROWS; row++) {
         for (int column = 0; column < COLUMNS; column++) {
             const int x = (column - SIDE) * CELL;
-            const int y = row * CELL;
+            const int y = (row - ABOVE) * CELL;
             float alpha = SHADE * (1 - std::min(1.0F, light[row][column]));
             if (x >= 0 && x < SCREEN_WIDTH && overStatus(x, y)) {
                 alpha = 0;
@@ -302,6 +312,6 @@ void drawLighting()
             shade[(row * COLUMNS) + column] = static_cast<std::uint32_t>(alpha);
         }
     }
-    overlayPicture(shade, COLUMNS, ROWS, static_cast<float>(-SIDE * CELL), 0, static_cast<float>(COLUMNS * CELL),
-                   static_cast<float>(SCREEN_HEIGHT));
+    overlayPicture(shade, COLUMNS, ROWS, static_cast<float>(-SIDE * CELL), static_cast<float>(-ABOVE * CELL),
+                   static_cast<float>(COLUMNS * CELL), static_cast<float>(ROWS * CELL));
 }

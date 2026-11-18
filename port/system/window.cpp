@@ -363,14 +363,16 @@ void gamepadGone()
 void capture(bool on);
 void showTitle();
 
-/* The window thread's: the wide screen's width the shape of the window's
- * picture, width x height pixels (over the whole screen, its display's),
- * for 480 rows. */
+/* The window thread's: the wide screen's frame the window's picture,
+ * width x height pixels (over the whole screen, its display's), at the
+ * largest whole scale that keeps it 640x480 or more: the native
+ * resolution, more of the world the larger the window. */
 void followPicture(int width, int height)
 {
     if (width > 0 && height > 0) {
-        setWideWidth(static_cast<u16>(
-            std::min(std::lround(static_cast<double>(SCREEN_HEIGHT) * width / height), static_cast<long>(WIDE_MOST))));
+        const int scale = std::max(1, std::min(width / SCREEN_WIDTH, height / SCREEN_HEIGHT));
+        setWideWidth(static_cast<u16>(std::min(width / scale, static_cast<int>(WIDE_MOST))));
+        setWideHeight(static_cast<u16>(std::min(height / scale, static_cast<int>(TALL_MOST))));
     }
 }
 
@@ -440,7 +442,9 @@ void openWindow()
     }
     /* Over the whole screen when the game has it so: the desktop's mode,
      * not one of the game's own. */
-    const SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
+    /* With the wide screen, maximized: the frame the window's (followPicture). */
+    const SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
+                                  (wideShaped && !fullscreen ? SDL_WINDOW_MAXIMIZED : 0);
     if (!SDL_CreateWindowAndRenderer(PROFILE_TITLE, frameWidth * scale, SCREEN_HEIGHT * scale, flags, &window,
                                      &renderer)) {
         failure("no window");
@@ -974,14 +978,14 @@ bool screenTexture(const ScreenView &view)
 }
 
 /* The frame's place in an output of width x height: the box of
- * frameWidth x 480 as large as it fits, in the middle (the full screen's
- * height, not a whole multiple's). */
-SDL_FRect framePlace(int width, int height, int frameWidth)
+ * frameWidth x frameHeight as large as it fits, in the middle (the full
+ * screen's height, not a whole multiple's). */
+SDL_FRect framePlace(int width, int height, int frameWidth, int frameHeight)
 {
     int w = width;
-    int h = width * SCREEN_HEIGHT / frameWidth;
+    int h = width * frameHeight / frameWidth;
     if (h > height) {
-        w = height * frameWidth / SCREEN_HEIGHT;
+        w = height * frameWidth / frameHeight;
         h = height;
     }
     return {static_cast<float>((width - w) / 2), static_cast<float>((height - h) / 2), static_cast<float>(w),
@@ -992,7 +996,7 @@ SDL_FRect framePlace(int width, int height, int frameWidth)
  * else 4:3 as high as the frame, in its middle. */
 SDL_FRect picturePlace(const SDL_FRect &frame, const ScreenView &view)
 {
-    if (view.sides != 0U) {
+    if (view.sides != 0U || view.top != 0U) {
         return frame;
     }
     const int h = static_cast<int>(frame.h);
@@ -1127,7 +1131,8 @@ void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenVie
     }
     const float scale = place.w / static_cast<float>(view.width);
     const float left = place.x + (static_cast<float>(view.sides) * scale);
-    const auto at = [&](float x, float y) { return SDL_FPoint{left + (x * scale), place.y + (y * scale)}; };
+    const float above = place.y + (static_cast<float>(view.top) * scale);
+    const auto at = [&](float x, float y) { return SDL_FPoint{left + (x * scale), above + (y * scale)}; };
     std::vector<SDL_Vertex> vertices;
     const auto corner = [&](SDL_FPoint point, SDL_FColor colour) {
         vertices.push_back({point, colour, {0, 0}});
@@ -1243,7 +1248,7 @@ void drawScreen(bool withStatus)
     if (!screenTexture(view)) {
         failure("no picture");
     }
-    const SDL_FRect place = picturePlace(framePlace(width, height, view.frameWidth), view);
+    const SDL_FRect place = picturePlace(framePlace(width, height, view.frameWidth, view.frameHeight), view);
     pictureScaleX = place.w / static_cast<float>(view.width) / SDL_GetWindowPixelDensity(window);
     pictureScaleY = place.h / static_cast<float>(view.height) / SDL_GetWindowPixelDensity(window);
     /* A whole multiple both ways each pixel's own; else (200 rows as 240,
@@ -1255,7 +1260,7 @@ void drawScreen(bool withStatus)
     SDL_RenderTexture(renderer, texture, nullptr, &place);
     drawOverlay(shown.overlay, place, view);
     if (withStatus) {
-        drawStatus(shown.status, framePlace(width, height, view.frameWidth));
+        drawStatus(shown.status, framePlace(width, height, view.frameWidth, view.frameHeight));
     }
 }
 

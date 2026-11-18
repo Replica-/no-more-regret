@@ -21,9 +21,14 @@ class NewGumpEvent;
 [[nodiscard]] bool pointerSetting();
 void setPointerSetting(bool on);
 [[nodiscard]] bool pointerMode();
-/* The pointer's place on the screen. */
+/* The pointer's place on the screen (of the wide screen's frame, left of
+ * 0 and above it in its sides). */
 [[nodiscard]] i16 pointerScreenX();
 [[nodiscard]] i16 pointerScreenY();
+/* The pointer's reach: all the wide screen's frame while the mode has the
+ * world (pointerTick), else the screen's (freezeWorld: a screen over the
+ * world has the game's pointer), the pointer kept where it is. */
+void pointerReach(bool frame);
 
 /* The item under screen point x,y that the Silencer can use or take (the
  * selection's: G, S), 0 for none; whether it is in his reach, as the

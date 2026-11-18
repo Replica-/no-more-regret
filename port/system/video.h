@@ -43,6 +43,11 @@ struct ScreenView {
     u16 frameWidth = SCREEN_WIDTH;
     u16 sides = 0;
     bool dimmed = false;
+    /* The frame's height and the rows above the mode's screen in the
+     * pixels (screen.h's screenWideHeight: 480 and 0 but for the native
+     * resolution). */
+    u16 frameHeight = SCREEN_HEIGHT;
+    u16 top = 0;
 };
 bool viewScreen(ScreenView &view);
 /* The port's wide screen (screen.h's screenSetWide): its width for 480
@@ -53,6 +58,11 @@ bool viewScreen(ScreenView &view);
 const u16 WIDE_DEFAULT = 854;
 const u16 WIDE_MOST = 1536;
 void setWideWidth(u16 width);
+/* Its height, which the window sets with the width (its picture's at a
+ * whole scale): even, 480 to TALL_MOST. */
+const u16 TALL_MOST = 864;
+void setWideHeight(u16 height);
+u16 wideFrameHeight();
 /* The frame's width for 480 rows: the wide screen's, 640 when it is off;
  * and its mode (screen.h's), for the window thread. */
 u16 wideFrameWidth();

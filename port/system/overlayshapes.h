@@ -38,7 +38,7 @@ struct Overlay {
  * side (nothing without one). The game thread's. */
 void gatherOverlay(Overlay &overlay);
 /* The overlay drawn over a picture of red, green and blue bytes, width x
- * height, the screen's x 0 at column left: pixel by pixel, without the
- * window (a script's screen). */
-void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int left);
+ * height, the screen's x 0 at column left and its y 0 at row above: pixel
+ * by pixel, without the window (a script's screen). */
+void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int left, int above = 0);
 #endif

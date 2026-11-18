@@ -15,6 +15,7 @@
 #include "screen.h"
 #include "shaphand.h"
 #include "spmgr.h"
+#include "status.h"
 #include "type.h"
 #include "viewport.h"
 #include "world.h"
@@ -42,8 +43,13 @@ struct SideItem {
  * (coverWideSides) or greyed (greyWideSides). */
 u8 *&pixels = gameGlobal<u8 *>(nullptr);
 u16 &pixelsWidth = gameGlobal<u16>(0);
+u16 &pixelsHeight = gameGlobal<u16>(0);
 bool &covered = gameGlobal<bool>(false);
 bool &greyed = gameGlobal<bool>(false);
+
+/* The rows below the screen the status display's parts need to be moved
+ * to the frame's bottom (screenShowFrame): their 40 and as many again. */
+const int STATUS_MOVED_ROOM = 80;
 
 /* A number of the sides' own from two (no random number of the game's). */
 u32 mixed(u32 a, u32 b)
@@ -236,17 +242,24 @@ i16 orderItems(const SideItem &a, const SideItem &b)
 /* The fast area's items the camera would draw (buildNodes: not the
  * editor's shapes, the invisible ones only the controlled NPC's or with the
  * world inactive) whose frames lie in the sides of the map's screen. */
-std::vector<SideItem> itemsIn(const Rect &left, const Rect &right, const Rect &screen)
+std::vector<SideItem> itemsIn(const std::vector<Rect> &areas, const Rect &screen)
 {
     /* The boxes near the sides, a cell of the display list's grid around
      * them as the grid has around the screen, are those whose frames may
      * reach them. */
-    auto near = [](const Rect &area) {
-        return Rect(static_cast<i16>(area.left - GRID_CELL), static_cast<i16>(area.top - GRID_CELL),
-                    static_cast<i16>(area.right + GRID_CELL), static_cast<i16>(area.bottom + GRID_CELL));
+    std::vector<Rect> nearAreas;
+    for (const Rect &area : areas) {
+        nearAreas.emplace_back(static_cast<i16>(area.left - GRID_CELL), static_cast<i16>(area.top - GRID_CELL),
+                               static_cast<i16>(area.right + GRID_CELL), static_cast<i16>(area.bottom + GRID_CELL));
+    }
+    const auto touchesAny = [](const Rect &box, const std::vector<Rect> &list) {
+        for (const Rect &area : list) {
+            if (touching(box, area)) {
+                return true;
+            }
+        }
+        return false;
     };
-    const Rect nearLeft = near(left);
-    const Rect nearRight = near(right);
     std::vector<SideItem> found;
     for (i16 sum = fastArea.sumLow; sum <= fastArea.sumHigh; sum++) {
         for (i16 difference = fastArea.differenceLow; difference <= fastArea.differenceHigh; difference++) {
@@ -269,10 +282,10 @@ std::vector<SideItem> itemsIn(const Rect &left, const Rect &right, const Rect &s
                 SideItem side{};
                 placeItem(number, side);
                 const Rect box = boxBounds(side);
-                if (!touching(box, nearLeft) && !touching(box, nearRight)) {
+                if (!touchesAny(box, nearAreas)) {
                     continue;
                 }
-                if (frameItem(side, screen) && (touching(side.bounds, left) || touching(side.bounds, right))) {
+                if (frameItem(side, screen) && touchesAny(side.bounds, areas)) {
                     found.push_back(side);
                 }
             }
@@ -328,9 +341,9 @@ std::vector<std::size_t> drawingOrder(const std::vector<SideItem> &items)
     return drawn;
 }
 
-/* The item's frame on view at its point less the scroll, moved by shift,
- * as DL_ItemNode::draw draws it. */
-void drawItem(Viewport &view, const SideItem &side, i16 shift)
+/* The item's frame on view at its point less the scroll, moved by shift
+ * across and down, as DL_ItemNode::draw draws it. */
+void drawItem(Viewport &view, const SideItem &side, i16 shift, i16 down)
 {
     const u16 shape = itemShape[side.item];
     const ShapeInfo &info = typeFlags.infos[shape];
@@ -339,7 +352,7 @@ void drawItem(Viewport &view, const SideItem &side, i16 shift)
         return;
     }
     const i16 x = static_cast<i16>(side.screenX - scrollX + shift);
-    const i16 y = static_cast<i16>(side.screenY - scrollY);
+    const i16 y = static_cast<i16>(side.screenY - scrollY + down);
     const u16 flags = itemFlags[side.item];
     if ((flags & ITEM_FLIPPED) != 0) {
         if ((flags & ITEM_INVISIBLE) != 0) {
@@ -358,12 +371,13 @@ void drawItem(Viewport &view, const SideItem &side, i16 shift)
     }
 }
 
-/* The sprites on view, moved by shift, as drawSprites draws them. */
-void drawSidesSprites(Viewport &view, i16 shift)
+/* The sprites on view, moved by shift across and down, as drawSprites
+ * draws them (not those not drawn, spmgr.h's SPRITE_UNSEEN). */
+void drawSidesSprites(Viewport &view, i16 shift, i16 down)
 {
     for (u16 i = 0; i < spriteCount; i++) {
         const SpriteEntry &sprite = sprites[i];
-        if (sprite.shape == 0U) {
+        if (sprite.shape == 0U || (sprite.flags & SPRITE_UNSEEN) != 0) {
             continue;
         }
         ShapeFrame *image = cachedShapeFrame(sprite.shape, sprite.frame);
@@ -373,7 +387,7 @@ void drawSidesSprites(Viewport &view, i16 shift)
         i16 x;
         i16 y;
         mapToScreen(sprite.x, sprite.y, &x, &y);
-        y = static_cast<i16>(y - sprite.z);
+        y = static_cast<i16>(y - sprite.z + down);
         if ((sprite.flags & SPRITE_REMAPPED) != 0) {
             view.drawShapeRemapped(static_cast<i16>(x + shift), y, image, paletteTables->remap);
         } else {
@@ -384,6 +398,15 @@ void drawSidesSprites(Viewport &view, i16 shift)
 
 }
 
+int wideStatusDown()
+{
+    const int height = screenWideHeight();
+    if (statusShown == 0U || height - SCREEN_HEIGHT < STATUS_MOVED_ROOM || covered) {
+        return 0;
+    }
+    return (height - SCREEN_HEIGHT) / 2;
+}
+
 void drawWideSides()
 {
     /* Nothing while the host draws nothing (host.h). */
@@ -391,7 +414,8 @@ void drawWideSides()
         return;
     }
     const u16 width = screenWideWidth();
-    if (width <= static_cast<u16>(SCREEN_WIDTH)) {
+    const u16 height = screenWideHeight();
+    if (width <= static_cast<u16>(SCREEN_WIDTH) && height <= static_cast<u16>(SCREEN_HEIGHT)) {
         return;
     }
     if (covered) {
@@ -403,41 +427,64 @@ void drawWideSides()
     if (greyed) {
         return;
     }
-    if (width != pixelsWidth) {
+    if (width != pixelsWidth || height != pixelsHeight) {
         delete[] pixels;
         /* Its middle, under the 640x480 screen, is never drawn: zeros, so
          * that greyWideSides reads no undefined pixel there. */
-        pixels = new u8[static_cast<std::size_t>(width) * SCREEN_HEIGHT]();
+        pixels = new u8[static_cast<std::size_t>(width) * height]();
         pixelsWidth = width;
+        pixelsHeight = height;
     }
     const auto side = static_cast<i16>((width - SCREEN_WIDTH) / 2);
-    const auto rightStart = static_cast<i16>(side + SCREEN_WIDTH);
+    const auto top = static_cast<i16>((height - SCREEN_HEIGHT) / 2);
     const auto last = static_cast<i16>(width - 1);
-    /* The sides on the map's screen, before the scroll, and on the pixels. */
-    const Rect leftArea(static_cast<i16>(scrollX - side), scrollY, static_cast<i16>(scrollX - 1),
-                        static_cast<i16>(scrollY + SCREEN_HEIGHT - 1));
-    const Rect rightArea(static_cast<i16>(scrollX + SCREEN_WIDTH), scrollY,
-                         static_cast<i16>(scrollX + SCREEN_WIDTH + side - 1),
-                         static_cast<i16>(scrollY + SCREEN_HEIGHT - 1));
-    const Rect sides[2] = {Rect(0, 0, static_cast<i16>(side - 1), SCREEN_HEIGHT - 1),
-                           Rect(rightStart, 0, last, SCREEN_HEIGHT - 1)};
-    const Rect *areas[2] = {&leftArea, &rightArea};
-    Viewport view(VIEWPORT_LARGE, 0, 0, last, SCREEN_HEIGHT - 1, pixels);
+    const auto bottom = static_cast<i16>(height - 1);
+    /* The parts of the frame round the screen on the pixels: the sides as
+     * high as the frame, above and below the screen between them. */
+    std::vector<Rect> parts;
+    if (side > 0) {
+        parts.emplace_back(0, 0, static_cast<i16>(side - 1), bottom);
+        parts.emplace_back(static_cast<i16>(side + SCREEN_WIDTH), 0, last, bottom);
+    }
+    if (top > 0) {
+        parts.emplace_back(side, 0, static_cast<i16>(side + SCREEN_WIDTH - 1), static_cast<i16>(top - 1));
+        parts.emplace_back(side, static_cast<i16>(top + SCREEN_HEIGHT), static_cast<i16>(side + SCREEN_WIDTH - 1),
+                           bottom);
+    }
+    /* With room enough below the screen, the status display's parts are
+     * shown at the frame's bottom (screenShowFrame), the world drawn where
+     * they were. */
+    std::vector<ScreenBox> moved;
+    if (wideStatusDown() != 0) {
+        for (const StatusPart &part : statusParts) {
+            moved.push_back({part.area.left, part.area.top, part.area.right, part.area.bottom});
+            parts.emplace_back(static_cast<i16>(part.area.left + side), static_cast<i16>(part.area.top + top),
+                               static_cast<i16>(part.area.right + side), static_cast<i16>(part.area.bottom + top));
+        }
+    }
+    /* The parts on the map's screen, before the scroll. */
+    std::vector<Rect> areas;
+    for (const Rect &part : parts) {
+        areas.emplace_back(static_cast<i16>(part.left - side + scrollX), static_cast<i16>(part.top - top + scrollY),
+                           static_cast<i16>(part.right - side + scrollX),
+                           static_cast<i16>(part.bottom - top + scrollY));
+    }
+    Viewport view(VIEWPORT_LARGE, 0, 0, last, bottom, pixels);
     const Rect screen(scrollX, scrollY, static_cast<i16>(scrollX + SCREEN_WIDTH - 1),
                       static_cast<i16>(scrollY + SCREEN_HEIGHT - 1));
-    const std::vector<SideItem> items = itemsIn(leftArea, rightArea, screen);
+    const std::vector<SideItem> items = itemsIn(areas, screen);
     const std::vector<std::size_t> order = drawingOrder(items);
-    for (int k = 0; k < 2; k++) {
-        view.setBounds(sides[k]);
-        view.clear(0, sides[k].left, sides[k].top, sides[k].right, sides[k].bottom);
+    for (std::size_t k = 0; k < parts.size(); k++) {
+        view.setBounds(parts[k]);
+        view.clear(0, parts[k].left, parts[k].top, parts[k].right, parts[k].bottom);
         for (const std::size_t item : order) {
-            if (touching(items[item].bounds, *areas[k])) {
-                drawItem(view, items[item], side);
+            if (touching(items[item].bounds, areas[k])) {
+                drawItem(view, items[item], side, top);
             }
         }
-        drawSidesSprites(view, side);
+        drawSidesSprites(view, side, top);
     }
-    screenShowSides(pixels, width);
+    screenShowFrame(pixels, width, height, moved.data(), static_cast<int>(moved.size()));
 }
 
 void coverWideSides()
@@ -449,13 +496,14 @@ void coverWideSides()
 void greyWideSides(BasePalette *palette)
 {
     const u16 width = screenWideWidth();
-    if (covered || pixels == nullptr || width != pixelsWidth) {
+    const u16 height = screenWideHeight();
+    if (covered || pixels == nullptr || width != pixelsWidth || height != pixelsHeight) {
         return;
     }
-    Viewport view(VIEWPORT_LARGE, 0, 0, static_cast<i16>(width - 1), SCREEN_HEIGHT - 1, pixels);
+    Viewport view(VIEWPORT_LARGE, 0, 0, static_cast<i16>(width - 1), static_cast<i16>(height - 1), pixels);
     toFixedGray(&view, palette);
     greyed = true;
-    screenShowSides(pixels, width);
+    screenShowFrame(pixels, width, height, nullptr, 0);
 }
 
 void ungreyWideSides()
@@ -468,4 +516,5 @@ void closeWideSides()
     delete[] pixels;
     pixels = nullptr;
     pixelsWidth = 0;
+    pixelsHeight = 0;
 }

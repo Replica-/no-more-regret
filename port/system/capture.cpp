@@ -116,7 +116,10 @@ std::vector<u8> capturePicture(const ScreenView *view, u16 width)
     const u16 shown = whole ? view->width : static_cast<u16>(view->width - (2 * view->sides));
     const u16 dimmedRight = static_cast<u16>(view->width - view->sides);
     for (u16 y = 0; y < CAPTURE_HEIGHT; y++) {
-        const u16 from = static_cast<u16>(static_cast<u32>(y) * view->height / CAPTURE_HEIGHT);
+        /* The rows of the mode's screen, without the frame's above and below
+         * it (the native resolution's). */
+        const u16 from = static_cast<u16>(view->top + (static_cast<u32>(y) * (view->height - (2 * view->top)) /
+                                                      CAPTURE_HEIGHT));
         u8 *row = &rgb[((static_cast<std::size_t>(y) * width) + left) * 3];
         for (u16 x = 0; x < columns; x++) {
             const u16 column = static_cast<u16>(skipped + (static_cast<u32>(x) * shown / columns));

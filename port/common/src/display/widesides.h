@@ -14,6 +14,14 @@
 
 class BasePalette;
 
+/* The widest and the tallest frame (system/video.h's WIDE_MOST and
+ * TALL_MOST). */
+const int WIDE_FRAME_MOST = 1536;
+const int TALL_FRAME_MOST = 864;
+/* The rows the status display's parts are moved down by on the frame
+ * (screen.h's screenShowFrame): its rows below the screen, the screen's
+ * place being in its middle; 0 when they stay where the screen has them. */
+int wideStatusDown();
 /* The sides of the camera's frame, drawn and shown; nothing when the wide
  * screen is off. */
 void drawWideSides();
