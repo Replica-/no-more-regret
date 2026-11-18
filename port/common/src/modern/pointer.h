@@ -39,6 +39,10 @@ void pointerReach(bool frame);
  * the gumps are hit in; true when it is off the screen, in the frame's
  * sides, where only the world's gump is. */
 bool pointerEventPlace(s16 *x, s16 *y);
+/* Whether the mouse's presses go to the game at once (MouseCtl::event):
+ * while the mode has the world, which tells its own double clicks, not
+ * held back for the original's. */
+[[nodiscard]] bool pointerClicksAtOnce();
 
 /* The item under screen point x,y that the Silencer can use or take (the
  * selection's: G, S), 0 for none; whether it is in his reach, as the

@@ -63,6 +63,20 @@ struct Buttons {
 };
 Buttons &buttons = gameGlobal<Buttons>();
 
+/* A move key pressed while the Silencer was busy, which the original
+ * drops (startMoveNoRemorse): given to the controller as soon as he is
+ * free, if that is soon (KEY_WAIT ticks); at 0 for none. Whether his
+ * animation is a turn to the pointer (turnTowards), which a key cuts
+ * short instead. */
+struct WaitingKey {
+    KeyEvent key;
+    Action action;
+    u32 at;
+    u8 turning;
+};
+WaitingKey &waiting = gameGlobal<WaitingKey>();
+const u32 KEY_WAIT = 45;
+
 /* A double click's ticks and pixels apart. */
 const u32 DOUBLE_CLICK_TICKS = 16;
 const i16 DOUBLE_CLICK_PIXELS = 14;
@@ -107,7 +121,9 @@ void turnTowards(Npc &npc, char toward)
     const int difference = ((toward - npc.direction()) + 16) % 16;
     const int step = difference <= 8 ? std::min(difference, TURN_STEP) : -std::min(16 - difference, TURN_STEP);
     const auto next = static_cast<u8>((npc.direction() + step) & 0xf);
-    npc.doAnim(standAnim(npc), next, ONLY_IF_IDLE, 0);
+    if (npc.doAnim(standAnim(npc), next, ONLY_IF_IDLE, 0) != 0U) {
+        waiting.turning = 1;
+    }
 }
 
 u32 now()
@@ -269,6 +285,11 @@ i16 pointerScreenX()
 i16 pointerScreenY()
 {
     return mouseCtl != nullptr ? static_cast<i16>(mouseCtl->pointerY - reach.top) : 0;
+}
+
+bool pointerClicksAtOnce()
+{
+    return pointerSetting() && worldActive != 0U && worldFrozen == 0U;
 }
 
 bool pointerEventPlace(s16 *x, s16 *y)
@@ -436,8 +457,22 @@ bool pointerKey(KeyEvent &key, Action action)
     if (key.pressed != 0U &&
         (action == Action::MOVE_BACK || action == Action::SLIDE_LEFT || action == Action::SLIDE_RIGHT ||
          action == Action::ROLL_LEFT || action == Action::ROLL_RIGHT || action == Action::KNEEL ||
-         action == Action::ADVANCE || action == Action::RETREAT)) {
+         action == Action::ADVANCE || action == Action::RETREAT || action == Action::ROLL_FORWARD)) {
         walkStop();
+        /* Not lost while he is busy: a turn to the pointer gives way at
+         * once, anything else is waited for (pointerTick). */
+        Npc npc(controlledActor);
+        if (npc.isBusy() && key.repeat == 1) {
+            if (waiting.turning != 0U && npc.lastAnimSet() == standAnim(npc)) {
+                killItemProcesses(npc.id, ANIM_TYPE, Priority(PRIORITY_EQUAL | BASE_LEVEL));
+                waiting.turning = 0;
+            } else {
+                waiting.key = key;
+                waiting.action = action;
+                waiting.at = std::max<u32>(1, now());
+                return true;
+            }
+        }
     }
     return false;
 }
@@ -466,6 +501,7 @@ void pointerTick()
 {
     pointerReach(pointerSetting() && worldActive != 0U && worldFrozen == 0U);
     if (!pointerMode()) {
+        waiting.at = 0;
         if (buttons.rightFiring != 0U) {
             stopFire();
         }
@@ -479,6 +515,17 @@ void pointerTick()
     /* The target the original chooses is not the player's: the aim is the
      * pointer's. */
     targeting = 0;
+    if (!npc.isBusy()) {
+        waiting.turning = 0;
+    }
+    if (waiting.at != 0U && now() - waiting.at > KEY_WAIT) {
+        waiting.at = 0;
+    }
+    if (waiting.at != 0U && !npc.isBusy() && controller != nullptr) {
+        waiting.at = 0;
+        KeyEvent key = waiting.key;
+        controller->actionKey(&key, waiting.action);
+    }
     if (buttons.pendingHolster != 0U && !npc.isBusy()) {
         buttons.pendingHolster = 0;
         if (weaponOut(npc)) {

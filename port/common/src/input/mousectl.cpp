@@ -1,6 +1,7 @@
 /* MOUSECTL.C (1358:0000-113e). See mousectl.h. */
 #include "gamestate.h"
 #include "mousectl.h"
+#include "pointer.h"
 #include "kernel.h"
 #include "file.h"
 #include "input.h"
@@ -204,7 +205,11 @@ void MouseCtl::event(u32 kind, EventData data)
             record.state = RECORD_PRESSED;
             record.action = MOUSE_LEFT_DOWN;
             record.shift = shift;
-            if (leftDown.state != RECORD_EMPTY) {
+            /* The port's pointer mode tells its own double clicks: a press
+             * goes at once, not held back for a second (pointer.h). */
+            if (pointerClicksAtOnce() && leftDown.state == RECORD_EMPTY && rightDown.state == RECORD_EMPTY) {
+                events.push(record);
+            } else if (leftDown.state != RECORD_EMPTY) {
                 record.state = RECORD_CHORD;
                 events.push(record);
                 leftDown.state = RECORD_EMPTY;
@@ -244,6 +249,10 @@ void MouseCtl::event(u32 kind, EventData data)
             record.state = RECORD_PRESSED;
             record.action = MOUSE_RIGHT_DOWN;
             record.shift = shift;
+            if (pointerClicksAtOnce() && leftDown.state == RECORD_EMPTY && rightDown.state == RECORD_EMPTY) {
+                events.push(record);
+                return;
+            }
             if (rightDown.state != RECORD_EMPTY) {
                 record.state = RECORD_CHORD;
                 events.push(record);
