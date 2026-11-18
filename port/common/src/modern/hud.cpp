@@ -1,5 +1,6 @@
 /* What the port's enhancements draw over the screen. See hud.h. */
 #include "hud.h"
+#include "effects.h"
 #include "enhancements.h"
 #include "gamestate.h"
 #include "camera.h"
@@ -275,6 +276,7 @@ void drawHud()
     drawColoursLayer();
     drawLighting();
     drawBlood();
+    drawEffects();
     if (worldActive != 0U) {
         healthBars();
         drawPopups();
@@ -298,8 +300,7 @@ void drawHud()
     const float y = static_cast<float>(pointerScreenY());
     const u16 item = pointerItemUnder(pointerScreenX(), pointerScreenY());
     const int badge = item == 0U ? 0 : pointerItemInReach(item) ? 1 : 2;
-    Npc npc(controlledActor);
-    if (npc.isWeaponDrawn() != 0U) {
+    if (pointerWeaponOut()) {
         aimMarks();
         targetCursor(x, y, badge);
         return;

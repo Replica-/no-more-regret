@@ -78,6 +78,10 @@ bool pointerAim(PointerAim *aim);
  * (WorldGump::handleMouseMotion, mouseButton). */
 bool pointerMotion(NewGumpEvent *event);
 bool pointerButton(u8 right, NewGumpEvent *event);
+/* The Silencer's weapon out, or being drawn, as the mode sees it: the flag
+ * and his pose (No Regret's teleport in leaves the flag set with him
+ * standing at peace, which the original's controls go by). */
+[[nodiscard]] bool pointerWeaponOut();
 /* The controller's key in the mode: true when the mode took it
  * (Controller::keyboardRest): the forward key walks to the pointer, the
  * jump key aims a jump (a tap let go comes back pressed, for the original's

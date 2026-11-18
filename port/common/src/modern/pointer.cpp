@@ -100,13 +100,23 @@ Reach &reach = gameGlobal<Reach>(Reach{});
  * directions. */
 const int TURN_STEP = 4;
 
+/* His pose a combat one (the original's controls' inCombatStance), but
+ * not one of peace: No Regret's teleport in leaves him in combat, standing
+ * as at peace (ANIM_TELEPORT_IN, inPeacefulStance). */
+bool combatPose()
+{
+    return inCombatStance() && !inPeacefulStance();
+}
+
 /* The stand of his stance, which a turn is made of (turnFrom's). */
 u16 standAnim(Npc &npc)
 {
     if (npc.isKneeling() != 0U) {
         return ANIM_KNEELING_SMALL;
     }
-    if (npc.isInCombat() != 0U) {
+    /* His pose, not the flag: No Regret's teleport in leaves him in combat
+     * standing as at peace, and the original's controls go by the pose. */
+    if (npc.isInCombat() != 0U && combatPose()) {
         const Item gun(npc.activeWeapon());
         return gun.isValid() && smallWeapon(gun.shape()) == 0U ? ANIM_COMBAT_STAND_LARGE : ANIM_COMBAT_STAND_SMALL;
     }
@@ -131,10 +141,10 @@ u32 now()
     return systemTimer->time();
 }
 
-/* The Silencer's weapon out, or being drawn. */
+/* The Silencer's weapon out, or being drawn: the flag and his pose. */
 bool weaponOut(Npc &npc)
 {
-    return npc.isWeaponDrawn() != 0U;
+    return npc.isWeaponDrawn() != 0U && combatPose();
 }
 
 bool drawing(Npc &npc)
@@ -256,6 +266,12 @@ bool usable(const Item &item)
            family == FAMILY_BOMB || family == FAMILY_AMMO || info.selectable;
 }
 
+}
+
+bool pointerWeaponOut()
+{
+    Npc npc(controlledActor);
+    return weaponOut(npc);
 }
 
 bool pointerSetting()
@@ -434,6 +450,39 @@ bool pointerButton(u8 right, NewGumpEvent *event)
     return true;
 }
 
+namespace {
+
+/* A roll the mode gives the controller (screenRoll): not taken again. */
+bool screenRolling = false;
+
+/* The roll keys roll towards the screen's left or right, not his: he
+ * faces the pointer, so his own sides go round with it. A side roll goes
+ * a quarter turn off his facing (sideStep's), right to the facing's +4,
+ * left to its -4; of the two ways to go, the one turning him least. */
+void screenRoll(Npc &npc, KeyEvent &key, bool right)
+{
+    const auto screenward =
+        static_cast<u8>(fineDirection(0, 0, static_cast<i16>(right ? 100 : -100), static_cast<i16>(right ? -100 : 100)) &
+                        0xf);
+    const auto facing = static_cast<u8>(npc.direction() & 0xf);
+    const auto turn = [facing](u8 to) {
+        const int d = std::abs(static_cast<int>(to) - static_cast<int>(facing));
+        return std::min(d, 16 - d);
+    };
+    const auto asRight = static_cast<u8>((screenward - 4) & 0xf);
+    const auto asLeft = static_cast<u8>((screenward + 4) & 0xf);
+    const bool rollRight = turn(asRight) <= turn(asLeft);
+    npc.setDirection(rollRight ? asRight : asLeft);
+    if (controller != nullptr) {
+        screenRolling = true;
+        KeyEvent roll = key;
+        controller->actionKey(&roll, rollRight ? Action::ROLL_RIGHT : Action::ROLL_LEFT);
+        screenRolling = false;
+    }
+}
+
+}
+
 bool pointerKey(KeyEvent &key, Action action)
 {
     if (!pointerMode()) {
@@ -478,6 +527,10 @@ bool pointerKey(KeyEvent &key, Action action)
                 waiting.at = std::max<u32>(1, now());
                 return true;
             }
+        }
+        if ((action == Action::ROLL_LEFT || action == Action::ROLL_RIGHT) && !screenRolling) {
+            screenRoll(npc, key, action == Action::ROLL_RIGHT);
+            return true;
         }
     }
     return false;
@@ -630,7 +683,7 @@ bool pointerAim(PointerAim *aim)
         return false;
     }
     Npc npc(controlledActor);
-    if (npc.isWeaponDrawn() == 0U || npc.activeWeapon() == 0U || reticleShown == 0U) {
+    if (!weaponOut(npc) || npc.activeWeapon() == 0U || reticleShown == 0U) {
         return false;
     }
     u16 offsetX;

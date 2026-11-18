@@ -619,7 +619,7 @@ void walkTick()
     const u16 lastAnim = npc.lastAnimSet();
     const bool running = isRunning(lastAnim) || isStartingRun(lastAnim);
     const bool wantRun = walk.run != 0U || actionHeld(Action::RUN) != 0U;
-    const bool armed = npc.isWeaponDrawn() != 0U;
+    const bool armed = pointerWeaponOut();
     /* The steps to try, best first, and the length of their strides. */
     struct Step {
         u16 anim;
