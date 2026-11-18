@@ -8,6 +8,7 @@
 #include "host.h"
 #include "language.h"
 #include "pointer.h"
+#include "lighting.h"
 #include "hud.h"
 #include "profile.h"
 #include "screen.h"
@@ -138,6 +139,11 @@ std::vector<std::string> readEnhancedText(const std::string &text)
             setPointerSetting(trimmed(line.substr(equals + 1)) != "0");
             continue;
         }
+        if (key == "lighting") {
+            /* The lighting (lighting.h): 0 the art as it is; another on. */
+            setLightingSetting(trimmed(line.substr(equals + 1)) != "0");
+            continue;
+        }
         if (key == "debug_feature") {
             /* The debug features: true (or 1); another off. */
             const std::string value = lowered(trimmed(line.substr(equals + 1)));
@@ -165,11 +171,14 @@ void readEnhancedOptions()
     /* What the port's enhancements draw (hud.h). */
     startHud();
     /* The port's controls by default: the keyboard and mouse controls
-     * (pointer.h) and the modern keys, which enhanced.cfg's pointer= and
-     * keys= change; the tests' REGRET_ORIGINAL_CONTROLS keeps the
-     * original's, the controls their results came from. */
+     * (pointer.h), the modern keys and the lighting (lighting.h), which
+     * enhanced.cfg's pointer=, keys= and lighting= change; the tests'
+     * REGRET_ORIGINAL_CONTROLS keeps the original's, the controls and the
+     * screens their results came from. */
     const bool original = hostEnvironment("REGRET_ORIGINAL_CONTROLS") != nullptr;
     setPointerSetting(!original);
+    /* The lighting too: the tests' screens are the art's own. */
+    setLightingSetting(!original);
     setKeyPreset(original ? KeyPreset::ORIGINAL : KeyPreset::MODERN);
     /* The window's own changes of the full screen (its key) kept. */
     hostFullscreenAction(writeEnhancedOptions);

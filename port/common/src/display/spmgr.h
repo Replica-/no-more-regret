@@ -32,6 +32,8 @@ ASSERT_FILE_SIZE(SpriteEntry, 0x13);
 
 /* The entries in use lie below it. */
 extern u16 &spriteCount;
+/* The table (the port's lighting reads it). */
+extern SpriteEntry *&sprites;
 /* The screen without the sprites. */
 extern Viewport *&gameBackground;
 /* Sprite numbers SPRITE.C keeps. */

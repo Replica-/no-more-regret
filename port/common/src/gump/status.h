@@ -25,6 +25,8 @@ ASSERT_SIZE(StatusPart, 0xd);
 
 /* The display is on. */
 extern u8 &statusShown;
+/* Its parts (the port's lighting leaves them as they are). */
+extern StatusPart (&statusParts)[STATUS_PARTS];
 
 void initStatus();
 /* Deletes initStatus' backgrounds and viewports (the port's, for gameRelease). */

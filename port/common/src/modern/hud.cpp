@@ -17,6 +17,7 @@
 #include "jump.h"
 #include "popups.h"
 #include "blood.h"
+#include "lighting.h"
 #include "shaphand.h"
 #include "screen.h"
 #include "systimer.h"
@@ -162,6 +163,7 @@ void drawHud()
     if (drawWheel() || drawMissionMap()) {
         return;
     }
+    drawLighting();
     drawBlood();
     if (worldActive != 0U) {
         healthBars();
