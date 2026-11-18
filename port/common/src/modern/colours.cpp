@@ -476,6 +476,8 @@ std::uint32_t previewPicture[PREVIEW * ZOOM * PREVIEW * ZOOM];
 /* The Silencer's shape (animcach.h). */
 const u16 SILENCER_SHAPE = 1;
 
+void exactColours(std::uint32_t *out, bool faded);
+
 void preview()
 {
     AnimFrame step;
@@ -490,8 +492,15 @@ void preview()
         previewRows[y] = static_cast<u32>(y * PREVIEW);
     }
     const ViewportPixels pixels{previewPixels, previewRows, 0, 0, PREVIEW - 1, PREVIEW - 1};
+    /* With the hardware scene, in the game's colours, made his exactly
+     * below; else in the palette's nearest. */
+    const bool exactly = hardwareSetting();
+    static std::uint32_t exact[256];
+    if (exactly) {
+        exactColours(exact, false);
+    }
     const u8 *look = tableFor(chosen);
-    const auto put = [look](u8 &out, u8 in) { out = look[in]; };
+    const auto put = [look, exactly](u8 &out, u8 in) { out = exactly ? in : look[in]; };
     const auto *bytes = reinterpret_cast<const u8 *>(frame);
     /* Its feet near the bottom. */
     const s32 x = PREVIEW / 2;
@@ -509,6 +518,10 @@ void preview()
             std::uint32_t &out = previewPicture[(y0 * side) + x0];
             if (pixel == TRANSPARENT) {
                 out = 0;
+                continue;
+            }
+            if (exactly && exact[pixel] != 0U) {
+                out = exact[pixel];
                 continue;
             }
             const RGB &c = colours[pixel];
@@ -627,9 +640,10 @@ void clearLayer()
 
 /* Each palette entry of a ramp in the colours as red, green, blue and an
  * alpha of FFh, the others 0: the shade the table gives, but the colour
- * itself, not the palette's nearest; scaled as the screen's palette is
- * against the game's (its fades). */
-void exactColours(std::uint32_t *out)
+ * itself, not the palette's nearest; faded, scaled as the screen's palette
+ * is against the game's (its fades: not over a menu, whose palette is its
+ * own). */
+void exactColours(std::uint32_t *out, bool faded)
 {
     u8 now[256 * 3];
     screenGetColors(0, 256, now);
@@ -652,7 +666,9 @@ void exactColours(std::uint32_t *out)
             float shade = scale <= 1 ? v * scale : v + ((255 - v) * std::min(1.0F, (scale - 1) * 0.6F));
             /* The fade: the screen's component against the game's. */
             const int shown = full(static_cast<u8>(now[(i * 3) + k] & 0x3fU));
-            shade = base[k] > 0 ? shade * static_cast<float>(shown) / static_cast<float>(base[k]) : 0;
+            if (faded) {
+                shade = base[k] > 0 ? shade * static_cast<float>(shown) / static_cast<float>(base[k]) : 0;
+            }
             made |= static_cast<std::uint32_t>(std::clamp(shade, 0.0F, 255.0F)) << (24 - (8 * k));
         }
         out[i] = made;
@@ -792,7 +808,7 @@ void drawColoursLayer()
         return;
     }
     std::uint32_t exact[256];
-    exactColours(exact);
+    exactColours(exact, true);
     const int width = right - left + 1;
     const int height = bottom - top + 1;
     std::fill_n(layerPicture, static_cast<std::size_t>(width) * height, 0U);
