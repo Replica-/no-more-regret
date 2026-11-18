@@ -7,6 +7,7 @@
 #include "gamestate.h"
 #include "crusader.h"
 #include "hud.h"
+#include "blood.h"
 #include "pointer.h"
 #include "crusader_game.h"
 #include "animcach.h"
@@ -1358,6 +1359,10 @@ bool npcTakesHit(Item *item, u16 hitter, u8 direction, i16 damage, u16 type, Ite
     npc.setHp(hp);
     if (!item->isControlled()) {
         noteHit(item->id, before, hp);
+    }
+    /* The port's: a human shot bleeds (blood.h). */
+    if (damage > 0 && isOrganic(item) && violenceEnabled()) {
+        noteBlood(item->id, hitter, direction, damage);
     }
     const NpcHit hit = {shape, facing, direction, damage, type, point, isOrganic(item)};
     if (TAKE_HIT_NO_REGRET) {

@@ -1,5 +1,6 @@
 /* DLITEM.C (Code55): the items in the display list. See dlitem.h. */
 #include "dlitem.h"
+#include "blood.h"
 #include "gamestate.h"
 #include "animprim.h"
 #include "basecam.h"
@@ -131,6 +132,10 @@ void DL_ItemNode::draw()
         } else {
             drawView.drawShape(screenX - scrollX, screenY - scrollY, image);
         }
+    }
+    /* The port's: the blood on a floor, under what stands on it (blood.h). */
+    if (bloodOn(nodeItem.id)) {
+        paintBlood(nodeItem.id, drawView);
     }
     if (nodeItem.isSilencer() &&
         ((controlledNpc.isInCombat() != 0U) || controlledNpc.lastAnimSet() == ANIM_UNREADY_SMALL)) {
