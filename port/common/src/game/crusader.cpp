@@ -9,6 +9,7 @@
 #include "hud.h"
 #include "blood.h"
 #include "death.h"
+#include "loot.h"
 #include "pointer.h"
 #include "crusader_game.h"
 #include "animcach.h"
@@ -1249,7 +1250,7 @@ void noRegretHurt(Item *item, Npc &npc, const NpcHit &hit)
 
 /* No Remorse's death of an NPC: it dies in flames or in the fire type's
  * shape, or falls and cries out (organic, with violence); then it is
- * dead. */
+ * dead, and the port throws out what it carried once its body lies. */
 void noRemorseDeath(Item *item, Npc &npc, const NpcHit &hit)
 {
     beginDeath(item, npc, hit.type);
@@ -1276,6 +1277,8 @@ void noRemorseDeath(Item *item, Npc &npc, const NpcHit &hit)
         }
     }
     npc.setDead();
+    /* The port's: what it carried falls out of its body (loot.h). */
+    noteLoot(item->id);
 }
 
 /* No Remorse's hurt NPC: an organic one (the Silencer at fire type 8 too)
