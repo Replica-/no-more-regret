@@ -720,7 +720,9 @@ u16 fireWeapon(Item *item, i16 x, i16 y, i16 z, char direction, i16 type, u8 aim
             target = controlledNpcNumber();
         }
     }
-    if (target.isValid()) {
+    /* The port's pointer mode aims at the point under the pointer, on
+     * the target too (launchAtReticle). */
+    if (target.isValid() && !(item->isControlled() && pointerMode())) {
         aimPoint(item->id, target.id, &aim);
     } else {
         aim.x = 0xffff;

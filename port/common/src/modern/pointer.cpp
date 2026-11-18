@@ -439,6 +439,12 @@ bool pointerKey(KeyEvent &key, Action action)
     if (!pointerMode()) {
         return false;
     }
+    /* The forward key with the roll key held rolls forward (the
+     * controller's roll); alone it walks to the pointer. */
+    if (action == Action::MOVE_FORWARD && keyMode(&key, Action::ROLL)) {
+        walkStop();
+        return false;
+    }
     if (action == Action::MOVE_FORWARD) {
         walkHold(key.pressed != 0U);
         return true;
@@ -486,14 +492,38 @@ bool pointerAimPoint(ItemPoint *point)
     u16 mapX;
     u16 mapY;
     screenToMap(pointerScreenX(), pointerScreenY(), &mapX, &mapY);
-    /* The point under the pointer at the height of the Silencer's shots
-     * (placeReticle's): the screen's point lifted by twice the height. */
+    /* The points under the pointer are a line through the map, the
+     * screen's point lifted by twice the height (placeReticle's): x + 2h,
+     * y + 2h, h. The point aimed at is where it first meets the box of the
+     * item under the pointer (the NPC, the crate, the floor), from the
+     * viewer's side, the highest; without one, at the height of the
+     * Silencer's shots. */
     u16 muzzleX;
     u16 muzzleZ;
     fireOffset(static_cast<u8>(npc.direction()), &muzzleX, &muzzleX, &muzzleZ);
-    const u8 height = static_cast<u8>(itemZ[npc.id] + muzzleZ);
+    int height = itemZ[npc.id] + muzzleZ;
+    u16 found = 0;
+    if (itemAt(&found, pointerScreenX(), pointerScreenY()) && found != controlledActor) {
+        const Item it(found);
+        i16 width;
+        i16 depth;
+        i16 tall;
+        typeFlags.info(it.shape()).box(width, depth, tall);
+        if ((it.flags() & ITEM_FLIPPED) != 0) {
+            std::swap(width, depth);
+        }
+        const auto floorHalf = [](int value) { return value >= 0 ? value / 2 : -((1 - value) / 2); };
+        const auto ceilHalf = [&](int value) { return -floorHalf(-value); };
+        const int x = itemX[found];
+        const int y = itemY[found];
+        const int z = itemZ[found];
+        const int highest = std::min({floorHalf(x - mapX), floorHalf(y - mapY), z + tall});
+        const int lowest = std::max({ceilHalf(x - width + 1 - mapX), ceilHalf(y - depth + 1 - mapY), z});
+        height = highest >= lowest ? highest : z + tall;
+    }
+    height = std::clamp(height, 0, 0xfa);
     const i16 lift = static_cast<i16>(height * 2);
-    *point = ItemPoint(static_cast<u16>(mapX + lift), static_cast<u16>(mapY + lift), height);
+    *point = ItemPoint(static_cast<u16>(mapX + lift), static_cast<u16>(mapY + lift), static_cast<u8>(height));
     return true;
 }
 

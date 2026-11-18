@@ -463,7 +463,8 @@ void SuperSprite::launchAtReticle(char newDirection, u16 newDamage, u16 newFire,
     /* The port's keyboard and mouse controls: the point under the pointer,
      * wherever it is (pointer.h). */
     ItemPoint pointed;
-    if (newSource == controlledActor && pointerAimPoint(&pointed)) {
+    const bool pointer = newSource == controlledActor && pointerAimPoint(&pointed);
+    if (pointer) {
         reticleX = pointed.x;
         reticleY = pointed.y;
     }
@@ -479,6 +480,12 @@ void SuperSprite::launchAtReticle(char newDirection, u16 newDamage, u16 newFire,
         point.y = reticleY;
     }
     point.z = z;
+    /* The pointer's point has its own height: the shot goes to it, up or
+     * down (past it as far as the x and y go, AIM_PAST_RETICLE). */
+    if (pointer) {
+        const int rise = AIM_PAST_RETICLE ? (pointed.z - z) * 6 : pointed.z - z;
+        point.z = static_cast<u8>(std::clamp(z + rise, 0, 0xfa));
+    }
     launch(newDirection, point, newDamage, newFire, newSource, newTarget, 1);
 }
 
