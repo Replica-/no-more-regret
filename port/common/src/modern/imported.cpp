@@ -5,7 +5,9 @@
 #include "astream.h"
 #include "file.h"
 #include "filespec.h"
+#include "animprim.h"
 #include "gamefile.h"
+#include "pointer.h"
 #include "shaphand.h"
 #include "utility.h"
 
@@ -120,6 +122,49 @@ bool importedAnim(u16 shape, u16 anim)
 {
     const Imported *in = data();
     return in != nullptr && shape == in->shape && anim == in->anim;
+}
+
+namespace {
+
+/* The animations made a frame, and the frames each had. */
+const u16 QUICK_ANIMS[] = {ANIM_READY_SMALL, ANIM_UNREADY_SMALL};
+u8 quickFrames[std::size(QUICK_ANIMS)] = {};
+
+}
+
+void quickenAnims(u16 shape, ActorAnim *table)
+{
+    if (shape != 1 || !pointerSetting()) {
+        return;
+    }
+    for (std::size_t q = 0; q < std::size(QUICK_ANIMS); q++) {
+        AnimAction *old = table->actions[QUICK_ANIMS[q]];
+        if (old == nullptr || old->info.frames <= 1) {
+            continue;
+        }
+        const u8 frames = old->info.frames;
+        const int directions = old->info.sixteenDirections ? 16 : 8;
+        auto *quick = new AnimAction;
+        quick->info = old->info;
+        quick->info.frames = 1;
+        quick->allocate();
+        for (int d = 0; d < directions; d++) {
+            quick->frameList[d] = old->frameList[(d * frames) + frames - 1];
+        }
+        delete old;
+        table->setAction(static_cast<i16>(QUICK_ANIMS[q]), quick);
+        quickFrames[q] = frames;
+    }
+}
+
+u8 quickenedFrames(u16 shape, u16 anim)
+{
+    for (std::size_t q = 0; q < std::size(QUICK_ANIMS); q++) {
+        if (shape == 1 && anim == QUICK_ANIMS[q] && pointerSetting()) {
+            return quickFrames[q];
+        }
+    }
+    return 0;
 }
 
 void releaseImported()

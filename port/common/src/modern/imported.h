@@ -16,6 +16,12 @@ ShapeFrame *importedFrame(u16 shape, u16 frame);
 /* The imported animation put in the shape's table when it has none of
  * that number (the animation cache's loadShape). */
 void importAnims(u16 shape, ActorAnim *table);
+/* No Regret's draw and holster of the small weapon in No Remorse with the
+ * modern controls: a frame, the pose they end in, not eleven (the
+ * animation cache's loadShape); the frames No Remorse's had, for its
+ * weapon overlay's, 0 for an animation not made so. */
+void quickenAnims(u16 shape, ActorAnim *table);
+u8 quickenedFrames(u16 shape, u16 anim);
 /* Whether the shape's animation is the imported one. */
 bool importedAnim(u16 shape, u16 anim);
 /* Forgets them, read again when next asked for (closeShapeFiles: the

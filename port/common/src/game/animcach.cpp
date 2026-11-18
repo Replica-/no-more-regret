@@ -123,6 +123,7 @@ i16 loadShape(u16 shape)
     }
     /* The port's animation of No Regret's in No Remorse (imported.h). */
     importAnims(shape, &animCache[slot]);
+    quickenAnims(shape, &animCache[slot]);
     cachedShapes[slot] = shape;
     delete table;
     return slot;

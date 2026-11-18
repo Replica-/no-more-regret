@@ -49,6 +49,13 @@ void loadOverlays(u16 weapon)
     for (anim = 0; anim < ANIM_ACTIONS; anim++) {
         info = animInfo(1, anim);
         i16 frames;
+        /* The port's (imported.h): a quickened animation's overlays are
+         * its frames' before; an imported one has none. */
+        if (const u8 original = quickenedFrames(1, static_cast<u16>(anim))) {
+            info.frames = original;
+        } else if (importedAnim(1, static_cast<u16>(anim))) {
+            info.frames = 0;
+        }
         if ((frames = info.frames) != 0 && info.attack) {
             i16 size;
             i16 directions;
@@ -148,7 +155,14 @@ void weaponOverlay(u16 weapon, u16 animation, char direction, u8 frame, u16 *sha
     if (!info.sixteenDirections) {
         direction >>= 1;
     }
-    entry = overlays[animation][static_cast<ui16>((direction * info.frames) + frame)];
+    /* The port's quick draw and holster (imported.h): the overlay of the
+     * frame they end in. */
+    u8 frames = info.frames;
+    if (const u8 original = quickenedFrames(1, animation)) {
+        frames = original;
+        frame = static_cast<u8>(original - 1);
+    }
+    entry = overlays[animation][static_cast<ui16>((direction * frames) + frame)];
     *shape = overlayShapes[overlayType];
     *dx = entry.dx;
     *dy = entry.dy;
