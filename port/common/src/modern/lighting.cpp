@@ -194,7 +194,7 @@ void glows()
     }
     for (u16 i = 0; i < spriteCount; i++) {
         const SpriteEntry &sprite = sprites[i];
-        if (sprite.shape == 0U) {
+        if (sprite.shape == 0U || (sprite.flags & SPRITE_UNSEEN) != 0) {
             continue;
         }
         const Glow &glow = glowOf(sprite.shape, sprite.frame);

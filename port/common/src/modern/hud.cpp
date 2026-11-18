@@ -24,6 +24,7 @@
 #include "screen.h"
 #include "systimer.h"
 #include "wheel.h"
+#include "world.h"
 #include "missionmap.h"
 #include "type.h"
 #include "viewport.h"
@@ -35,7 +36,6 @@
 
 namespace {
 
-const std::uint32_t WHITE = 0xf0f0f0e0;
 const std::uint32_t SHADOW = 0x00000080;
 const std::uint32_t IN_REACH = 0x40e060ff;
 const std::uint32_t OUT_OF_REACH = 0xe04040ff;
@@ -47,34 +47,76 @@ const std::uint32_t LASER = 0xff2020ff;
 const u32 BAR_SHOWN = 135;
 const u32 BAR_FADE = 30;
 
-/* The target cursor: a thin ring, a dot and four short lines, each over a
- * shadow. */
-void targetCursor(float x, float y)
+const std::uint32_t TARGET_RED = 0xff2828ff;
+const std::uint32_t RIM = 0x000000aa;
+const std::uint32_t OUTLINE = 0x000000d7;
+const std::uint32_t ARROW_FILL = 0xfafafaff;
+/* The game's reticle, which the target cursor is as big as (2.2 times its
+ * picture). */
+const u16 RETICLE_SHAPE = 0x4cc;
+
+/* A dot over a dark rim of 1.4 more: whether the item under the pointer is
+ * in reach (green) or not (red). */
+void reachBadge(float x, float y, float radius, bool inReach)
 {
-    for (int pass = 0; pass < 2; pass++) {
-        const std::uint32_t colour = pass == 0 ? SHADOW : WHITE;
-        const float width = pass == 0 ? 2.5F : 1.2F;
-        overlayRing(x, y, 8, width, colour);
-        overlayLine(x - 14, y, x - 10, y, width, colour);
-        overlayLine(x + 10, y, x + 14, y, width, colour);
-        overlayLine(x, y - 14, x, y - 10, width, colour);
-        overlayLine(x, y + 10, x, y + 14, width, colour);
-        overlayDisc(x, y, pass == 0 ? 1.8F : 1.1F, colour);
+    overlayDisc(x, y, radius + 1.4F, OUTLINE);
+    overlayDisc(x, y, radius, inReach ? IN_REACH : OUT_OF_REACH);
+}
+
+/* The target cursor with the weapon out: a thin red ring, a dot and four
+ * short lines out from the ring, over a dark rim; the reach's dot at its
+ * lower right over an item (badge 0 none, 1 in reach, 2 not). */
+void targetCursor(float x, float y, int badge)
+{
+    float size = 30;
+    if (ShapeFrame *frame = cachedShapeFrame(RETICLE_SHAPE, 0)) {
+        size = static_cast<float>(std::max(frame->width, frame->height)) * 2.2F;
+    }
+    const float outer = size * 0.5F;
+    const float ring = outer * 0.56F;
+    const float thick = std::max(0.8F, outer * 0.04F);
+    const float tick = std::max(1.0F, outer * 0.055F);
+    overlayRing(x, y, ring, (2 * thick) + 1.4F, RIM);
+    overlayRing(x, y, ring, 2 * thick, TARGET_RED);
+    const float ends[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (const auto &end : ends) {
+        const float x0 = x + (end[0] * (ring + thick));
+        const float y0 = y + (end[1] * (ring + thick));
+        overlayLine(x0, y0, x + (end[0] * outer), y + (end[1] * outer), tick + 1.4F, RIM);
+        overlayLine(x0, y0, x + (end[0] * outer), y + (end[1] * outer), tick, TARGET_RED);
+    }
+    const float dot = std::max(1.5F, outer * 0.09F);
+    overlayDisc(x, y, dot + 0.7F, RIM);
+    overlayDisc(x, y, dot, TARGET_RED);
+    if (badge != 0) {
+        reachBadge(x + (outer * 0.95F), y + (outer * 0.95F), std::max(3.8F, outer * 0.2F), badge == 1);
     }
 }
 
-/* The mouse's place with the weapon put away (the game hides its own
- * pointer over the world): an arrow, its point at x,y. */
-void arrowCursor(float x, float y)
+/* The pointer with the weapon put away (the game hides its own over the
+ * world): a white arrow, its point at x,y, outlined in black; the reach's
+ * dot at its lower right over an item. */
+void arrowCursor(float x, float y, int badge)
 {
-    for (int pass = 0; pass < 2; pass++) {
-        const std::uint32_t colour = pass == 0 ? SHADOW : WHITE;
-        const float width = pass == 0 ? 2.5F : 1.2F;
-        overlayLine(x, y, x, y + 14, width, colour);
-        overlayLine(x, y, x + 10, y + 10, width, colour);
-        overlayLine(x, y + 14, x + 4, y + 10, width, colour);
-        overlayLine(x + 4, y + 10, x + 10, y + 10, width, colour);
-        overlayLine(x + 4, y + 10, x + 7, y + 17, width, colour);
+    const float SCALE = 1.15F;
+    /* The point, the left foot, the inner notch, the tail's two corners,
+     * the notch, the right wing; and its triangles. */
+    const float shape[7][2] = {{0, 0}, {0, 16}, {4.4F, 12.2F}, {7.4F, 18.6F}, {10, 17.4F}, {7, 11}, {12, 11}};
+    const int triangles[5][3] = {{0, 1, 2}, {0, 2, 5}, {0, 5, 6}, {2, 3, 4}, {2, 4, 5}};
+    const auto polygon = [&](float ox, float oy, std::uint32_t colour) {
+        for (const auto &t : triangles) {
+            overlayTriangle(x + ox + (shape[t[0]][0] * SCALE), y + oy + (shape[t[0]][1] * SCALE),
+                            x + ox + (shape[t[1]][0] * SCALE), y + oy + (shape[t[1]][1] * SCALE),
+                            x + ox + (shape[t[2]][0] * SCALE), y + oy + (shape[t[2]][1] * SCALE), colour);
+        }
+    };
+    const float outline[6][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {1, 1}, {-1, -1}};
+    for (const auto &o : outline) {
+        polygon(o[0], o[1], OUTLINE);
+    }
+    polygon(0, 0, ARROW_FILL);
+    if (badge != 0) {
+        reachBadge(x + 17, y + 18, 3.8F, badge == 1);
     }
 }
 
@@ -191,20 +233,22 @@ void drawHud()
     }
     path();
     drawJump();
+    /* A screen over the world (the options, a message) has the game's own
+     * pointer. */
+    if (worldFrozen != 0U) {
+        return;
+    }
     const float x = static_cast<float>(pointerScreenX());
     const float y = static_cast<float>(pointerScreenY());
+    const u16 item = pointerItemUnder(pointerScreenX(), pointerScreenY());
+    const int badge = item == 0U ? 0 : pointerItemInReach(item) ? 1 : 2;
     Npc npc(controlledActor);
     if (npc.isWeaponDrawn() != 0U) {
         aimMarks();
-        targetCursor(x, y);
+        targetCursor(x, y, badge);
         return;
     }
-    arrowCursor(x, y);
-    const u16 item = pointerItemUnder(pointerScreenX(), pointerScreenY());
-    if (item != 0U) {
-        overlayDisc(x + 9, y + 9, 3.5F, SHADOW);
-        overlayDisc(x + 9, y + 9, 2.5F, pointerItemInReach(item) ? IN_REACH : OUT_OF_REACH);
-    }
+    arrowCursor(x, y, badge);
 }
 
 /* wordsBegin's pixels, and the picture wordsEnd makes of them. */

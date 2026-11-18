@@ -18,6 +18,9 @@ constexpr int SPRITES = 64;
 constexpr int SPRITE_DRAW = 0x1;        /* drawn in the next frame */
 constexpr int SPRITE_MOVED = 0x2;       /* its old place is drawn again */
 constexpr int SPRITE_REMAPPED = 0x1000; /* drawn through paletteTables->remap */
+/* The port's: not drawn, its place kept (the keyboard and mouse controls' reticle,
+ * pointer.h, which the pointer's cursor stands for). */
+constexpr int SPRITE_UNSEEN = 0x2000;
 
 struct __attribute__((packed)) SpriteEntry {
     u16 shape; /* 0 for a free entry */

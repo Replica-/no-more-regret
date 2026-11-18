@@ -10,6 +10,7 @@
 #include "sprite_game.h"
 #include "camera.h"
 #include "control.h"
+#include "pointer.h"
 #include "crusader.h"
 #include "distance.h"
 #include "explode.h"
@@ -459,6 +460,13 @@ void SuperSprite::launchAtReticle(char newDirection, u16 newDamage, u16 newFire,
     y = itemY[firer.id];
     reticleX = spriteX(reticleSprite);
     reticleY = spriteY(reticleSprite);
+    /* The port's keyboard and mouse controls: the point under the pointer,
+     * wherever it is (pointer.h). */
+    ItemPoint pointed;
+    if (newSource == controlledActor && pointerAimPoint(&pointed)) {
+        reticleX = pointed.x;
+        reticleY = pointed.y;
+    }
     if (AIM_PAST_RETICLE) {
         reticleDx = reticleX - x;
         reticleDy = reticleY - y;

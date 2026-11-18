@@ -316,6 +316,26 @@ bool pointerKey(KeyEvent &key, Action action)
     return false;
 }
 
+bool pointerAimPoint(ItemPoint *point)
+{
+    if (!pointerMode()) {
+        return false;
+    }
+    Npc npc(controlledActor);
+    u16 mapX;
+    u16 mapY;
+    screenToMap(pointerScreenX(), pointerScreenY(), &mapX, &mapY);
+    /* The point under the pointer at the height of the Silencer's shots
+     * (placeReticle's): the screen's point lifted by twice the height. */
+    u16 muzzleX;
+    u16 muzzleZ;
+    fireOffset(static_cast<u8>(npc.direction()), &muzzleX, &muzzleX, &muzzleZ);
+    const u8 height = static_cast<u8>(itemZ[npc.id] + muzzleZ);
+    const i16 lift = static_cast<i16>(height * 2);
+    *point = ItemPoint(static_cast<u16>(mapX + lift), static_cast<u16>(mapY + lift), height);
+    return true;
+}
+
 void pointerTick()
 {
     if (!pointerMode()) {
@@ -350,20 +370,11 @@ void pointerTick()
     }
     walkTick();
     jumpTick();
-    const i16 x = pointerScreenX();
-    const i16 y = pointerScreenY();
-    u16 mapX;
-    u16 mapY;
-    screenToMap(x, y, &mapX, &mapY);
-    /* The point under the pointer at the height of the Silencer's shots
-     * (placeReticle's): the reticle goes there, and the shots fly to it. */
-    u16 muzzleX;
-    u16 muzzleZ;
-    fireOffset(static_cast<u8>(npc.direction()), &muzzleX, &muzzleX, &muzzleZ);
-    const u8 height = static_cast<u8>(itemZ[npc.id] + muzzleZ);
-    const i16 lift = static_cast<i16>(height * 2);
-    const i16 aimX = static_cast<i16>(mapX + lift);
-    const i16 aimY = static_cast<i16>(mapY + lift);
+    ItemPoint aim;
+    pointerAimPoint(&aim);
+    const i16 aimX = static_cast<i16>(aim.x);
+    const i16 aimY = static_cast<i16>(aim.y);
+    const u8 height = aim.z;
     const i16 dx = static_cast<i16>(aimX - static_cast<i16>(npc.centreX()));
     const i16 dy = static_cast<i16>(aimY - static_cast<i16>(npc.centreY()));
     if (std::abs(dx) + std::abs(dy) < FACE_DEAD_ZONE * 4) {
@@ -376,6 +387,8 @@ void pointerTick()
         if (reticleShown != 0U) {
             placeReticle();
             showSprite(reticleSprite, aimX, aimY, height);
+            /* Not drawn: the cursor (hud.cpp) is where it is. */
+            sprites[reticleSprite].flags |= SPRITE_UNSEEN;
         }
         if (!walking() && !npc.isBusy() && toward != npc.direction()) {
             npc.doAnim(npc.isKneeling() != 0U ? ANIM_KNEELING_SMALL : ANIM_COMBAT_STAND_SMALL, static_cast<u8>(toward),
@@ -422,7 +435,9 @@ bool pointerAim(PointerAim *aim)
     if (target != 0U) {
         aimPoint(controlledActor, target, &aim->to);
     } else {
-        aim->to = ItemPoint(spriteX(reticleSprite), spriteY(reticleSprite), aim->from.z);
+        ItemPoint pointed;
+        pointerAimPoint(&pointed);
+        aim->to = ItemPoint(pointed.x, pointed.y, aim->from.z);
     }
     Sweep sweep;
     ItemPoint start = aim->from;

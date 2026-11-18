@@ -284,7 +284,8 @@ void drawSprites()
     }
     moved.clear();
     for (i = 0; i < spriteCount; i++) {
-        if ((sprites[i].shape != 0U) && ((sprites[i].flags & SPRITE_DRAW) != 0)) {
+        if ((sprites[i].shape != 0U) && ((sprites[i].flags & SPRITE_DRAW) != 0) &&
+            ((sprites[i].flags & SPRITE_UNSEEN) == 0)) {
             Rect bounds = spriteBounds(i);
             for (u16 other = 0; other < spriteCount; other++) {
                 if (i == other) {
@@ -301,7 +302,8 @@ void drawSprites()
                     } else {
                         halt();
                     }
-                } else if (((sprites[other].flags & SPRITE_DRAW) == 0) && (sprites[other].shape != 0U)) {
+                } else if (((sprites[other].flags & (SPRITE_DRAW | SPRITE_UNSEEN)) == 0) &&
+                           (sprites[other].shape != 0U)) {
                     Rect under = spriteBounds(other);
                     if (rectsOverlap(&bounds, &under)) {
                         ShapeFrame *image = cachedShapeFrame(sprites[other].shape, sprites[other].frame);

@@ -36,6 +36,11 @@ void pointerUse(u16 item);
  * the breakable thing under the pointer, 0 for none (the shots fly to the
  * reticle, at the pointer). */
 [[nodiscard]] u16 pointerShotTarget();
+/* The point the Silencer aims at in the mode: under the pointer, at the
+ * height of his shots, wherever it is (SuperSprite::launchAtReticle's in
+ * place of the reticle's, which the game keeps on a circle round him);
+ * false when the mode is off. */
+bool pointerAimPoint(ItemPoint *point);
 /* Where the Silencer's next shot would go, for the overlay: from the
  * muzzle to the point aimed at, stopped at what is in the way first
  * (blocked); its spread there across and up, as SuperSprite::launch
