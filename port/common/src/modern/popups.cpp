@@ -5,6 +5,7 @@
 #include "crusys.h"
 #include "display.h"
 #include "hud.h"
+#include "enhancements.h"
 #include "item.h"
 #include "itemdata.h"
 #include "npc.h"
@@ -73,7 +74,7 @@ void notePickupLine(i16 line)
 
 void drawPopups()
 {
-    if (worldActive == 0U ||
+    if (worldActive == 0U || !pickupsNearSetting() ||
         std::none_of(std::begin(pickups), std::end(pickups), [](const Pickup &p) { return p.name != nullptr; })) {
         return;
     }

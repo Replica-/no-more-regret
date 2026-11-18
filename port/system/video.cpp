@@ -47,6 +47,7 @@ u8 colours[256][3];
 std::atomic<u8> wideMode{0};
 std::atomic<u16> wideWidth{WIDE_DEFAULT};
 std::atomic<u16> wideHeight{SCREEN_HEIGHT};
+std::atomic<u8> wideZoom{0};
 std::vector<u8> sides;
 u16 sidesWidth = 0;
 u16 sidesHeight = 0;
@@ -295,6 +296,23 @@ void setWideHeight(u16 height)
 u16 wideFrameHeight()
 {
     return wideMode != 0U ? wideHeight.load() : static_cast<u16>(SCREEN_HEIGHT);
+}
+
+void screenSetZoom(u8 zoom)
+{
+    const SystemSide systemSide;
+    wideZoom = zoom <= 4 ? zoom : 0;
+}
+
+u8 screenZoom()
+{
+    const SystemSide systemSide;
+    return wideZoom;
+}
+
+u8 wideZoomNow()
+{
+    return wideZoom;
 }
 
 u16 screenWideHeight()

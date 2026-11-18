@@ -1,6 +1,7 @@
 /* The port's settings gump and the settings both games have. See
  * settings.h. */
 #include "settings.h"
+#include "enhancements.h"
 #include "gamestate.h"
 #include "settings_game.h"
 #include "mainmenu_game.h"
@@ -304,7 +305,7 @@ SettingColumns gameSettingColumns()
 {
     return SettingColumns{{animationsSetting(), frameSkipSetting(), videoSetting(), blastsSetting(),
                            XAN_MOVIE_OPTIONS ? hiColorSetting() : filteringSetting(), subtitlesSetting(),
-                           wideScreenSetting()},
+                           enhancementsSetting()},
                           {soundVolumeSetting(), musicVolumeSetting(), mouseSetting(), languageSetting(), keysSetting(),
                            soundDepthSetting(), gameSpeedSetting()}};
 }
@@ -316,7 +317,7 @@ void playSettingsOpened()
     }
 }
 
-SettingsGump::SettingsGump()
+SettingsGump::SettingsGump(SettingColumns columns)
     : NewGump(NewGumpId(), nullptr, 0), layout_(Axis::HORIZONTAL, COLUMN_GAP, Align::CENTER),
       corner_(Axis::VERTICAL, 0, Align::END), done_(nullptr)
 {
@@ -329,7 +330,6 @@ SettingsGump::SettingsGump()
     drawViewport->clear(0);
     screenViewport->blit(drawViewport);
     palette_.load(makePath(nullptr, staticDirectory, "misc.pal", nullptr), 0);
-    const SettingColumns columns = gameSettingColumns();
     LayoutBox &left = layout_.add<LayoutBox>(Align::START, Axis::VERTICAL, SETTINGS_ROW_GAP, Align::START);
     for (const Setting &setting : columns.left) {
         addRow(left, setting);

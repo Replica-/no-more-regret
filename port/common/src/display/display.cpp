@@ -11,10 +11,9 @@
 #include "itemdata.h"
 #include "type.h"
 #include "popups.h"
+#include "enhancements.h"
 
 void agePickups();
-/* The port's: the lines are drawn over the places their items came from. */
-constexpr bool PICKUPS_OVER_SOURCES = true;
 void pickupInfo(u16 id, const char **name, u16 *shape, u16 *frame);
 
 u8 &pickupsFrozen = gameGlobal<u8>(0);
@@ -78,7 +77,7 @@ void drawPickups()
     }
     /* The port draws the lines over the places their items came from
      * (popups.h): none on the screen to draw or to erase. */
-    if (PICKUPS_OVER_SOURCES) {
+    if (pickupsNearSetting()) {
         for (Pickup &pickup : pickups) {
             pickup.redraw = 0;
         }

@@ -10,6 +10,7 @@
 #include "pointer.h"
 #include "lighting.h"
 #include "colours.h"
+#include "enhancements.h"
 #include "hud.h"
 #include "profile.h"
 #include "screen.h"
@@ -75,7 +76,8 @@ std::string enhancedText()
     }
     text += std::string("pointer=") + (pointerSetting() ? "1" : "0") + "\r\n";
     text += std::string("lighting=") + (lightingSetting() ? "1" : "0") + "\r\n";
-    text += "colours=" + std::to_string(coloursSetting()) + "\r\n";
+    text += "colours=" + coloursText() + "\r\n";
+    text += enhancementsText();
     return text + bindingsText();
 }
 
@@ -147,9 +149,13 @@ std::vector<std::string> readEnhancedText(const std::string &text)
             setLightingSetting(trimmed(line.substr(equals + 1)) != "0");
             continue;
         }
+        if (readEnhancement(key, trimmed(line.substr(equals + 1)))) {
+            continue;
+        }
         if (key == "colours") {
-            /* The Silencer's look (colours.h): its number, 0 the game's. */
-            setColoursSetting(static_cast<u8>(std::atoi(trimmed(line.substr(equals + 1)).c_str())));
+            /* The Silencer's colours (colours.h): three RRGGBB, or a
+             * preset's number. */
+            setColoursText(trimmed(line.substr(equals + 1)));
             continue;
         }
         if (key == "debug_feature") {

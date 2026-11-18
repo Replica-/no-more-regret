@@ -1,6 +1,8 @@
 /* The Silencer's colours. See colours.h. */
 #include "colours.h"
 #include "gamestate.h"
+#include "animcach.h"
+#include "animprim.h"
 #include "bindings.h"
 #include "control.h"
 #include "dispatch.h"
@@ -16,11 +18,14 @@
 #include "screen.h"
 #include "shape.h"
 #include "shaphand.h"
+#include "systimer.h"
 #include "viewport.h"
 #include "world.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 
 namespace {
 
@@ -30,35 +35,68 @@ const int LOGO = 1;
 const int PACK = 2;
 const int RAMPS = 3;
 
-/* A look: its name and each ramp's colour, 0xRRGGBB. */
-struct Look {
-    const char *name;
+/* Each ramp's colour, 0xRRGGBB. */
+struct Colours {
     std::uint32_t rgb[RAMPS];
 };
-const Look LOOKS[] = {
-    {"ORIGINAL", {0x8a0404, 0xff9e20, 0x594928}}, {"STEALTH", {0x2c2f36, 0x9aa0aa, 0x1e2024}},
-    {"DESERT", {0xc2a25a, 0x6b4a18, 0x7a5a32}},   {"ARCTIC", {0xe6edf5, 0x3c86d6, 0x8a9bb0}},
-    {"TOXIC", {0x37c837, 0xf0f028, 0x2e4a22}},    {"ROYAL", {0x3a3ad0, 0xffd23c, 0x2a1e5a}},
-    {"NIGHT", {0x16204a, 0x5adcf0, 0x1a1a2a}},    {"SUNSET", {0xe8601c, 0xffe08a, 0x6b2a18}},
-    {"ORCHID", {0xc83c9c, 0xf0e6ff, 0x4a2a5a}},   {"GOLD", {0xd4af37, 0x20202a, 0x5c4a1a}},
-    {"OCEAN", {0x0e8c8c, 0xf4f0d0, 0x1c3a4a}},    {"BONE", {0xdcd2b8, 0x8a0404, 0x6a5a44}},
+bool operator==(const Colours &a, const Colours &b)
+{
+    return a.rgb[0] == b.rgb[0] && a.rgb[1] == b.rgb[1] && a.rgb[2] == b.rgb[2];
+}
+
+/* A preset: its name and colours; the first the game's own. */
+struct Preset {
+    const char *name;
+    Colours colours;
 };
-const int LOOK_COUNT = static_cast<int>(sizeof(LOOKS) / sizeof(LOOKS[0]));
-/* The brightest component of the ramp's shade that takes the look's colour
- * as it is. */
+const Preset PRESETS[] = {
+    {"ORIGINAL", {{0x8a0404, 0xff9e20, 0x594928}}}, {"STEALTH", {{0x2c2f36, 0x9aa0aa, 0x1e2024}}},
+    {"DESERT", {{0xc2a25a, 0x6b4a18, 0x7a5a32}}},   {"ARCTIC", {{0xe6edf5, 0x3c86d6, 0x8a9bb0}}},
+    {"TOXIC", {{0x37c837, 0xf0f028, 0x2e4a22}}},    {"ROYAL", {{0x3a3ad0, 0xffd23c, 0x2a1e5a}}},
+    {"NIGHT", {{0x16204a, 0x5adcf0, 0x1a1a2a}}},    {"SUNSET", {{0xe8601c, 0xffe08a, 0x6b2a18}}},
+    {"ORCHID", {{0xc83c9c, 0xf0e6ff, 0x4a2a5a}}},   {"GOLD", {{0xd4af37, 0x20202a, 0x5c4a1a}}},
+    {"OCEAN", {{0x0e8c8c, 0xf4f0d0, 0x1c3a4a}}},    {"BONE", {{0xdcd2b8, 0x8a0404, 0x6a5a44}}},
+};
+const int PRESET_COUNT = static_cast<int>(sizeof(PRESETS) / sizeof(PRESETS[0]));
+/* The quick colours under the square. */
+const std::uint32_t QUICK[] = {0xc01010, 0xe8601c, 0xf0c020, 0x37c837, 0x0e8c8c, 0x3a6ae0,
+                               0x7a3ad0, 0xc83c9c, 0xf4f4f4, 0x9aa0aa, 0x2c2f36, 0x6b4a18};
+const int QUICK_COUNT = static_cast<int>(sizeof(QUICK) / sizeof(QUICK[0]));
+/* The brightest component of the ramp's shade that takes the colour as it
+ * is. */
 const int REFERENCE[RAMPS] = {138, 255, 89};
 
-u8 &chosenLook = gameSetting<u8>(0);
+Colours &chosen = gameSetting<Colours>(PRESETS[0].colours);
 
-/* The colour each palette entry is drawn in, for the look it was made for
- * (FFh none). */
+/* The colour each palette entry is drawn in, for the colours it was made
+ * for. */
 u8 table[256];
-u8 tableLook = 0xff;
+Colours tableColours{{0, 0, 0}};
+bool tableMade = false;
 
 /* A colour's component, 8 bits from the palette's 6. */
 int full(u8 component)
 {
     return (component * 255) / 63;
+}
+
+/* A hue (0-360), 60 degrees a sixth of the circle, of r,g,b at most high
+ * and at least low. */
+float hueOf(int r, int g, int b, int high, int low)
+{
+    const auto d = static_cast<float>(high - low);
+    if (d <= 0) {
+        return 0;
+    }
+    float hue = 0;
+    if (high == r) {
+        hue = 60 * (static_cast<float>(g - b) / d);
+    } else if (high == g) {
+        hue = 60 * ((static_cast<float>(b - r) / d) + 2);
+    } else {
+        hue = 60 * ((static_cast<float>(r - g) / d) + 4);
+    }
+    return hue < 0 ? hue + 360 : hue;
 }
 
 /* The ramp of a colour, judged from it alone: -1 for the blackish and the
@@ -72,18 +110,7 @@ int rampOf(int r, int g, int b)
     if (high * 100 < 16 * 255 || high == 0 || (high - low) * 100 < 20 * high) {
         return -1;
     }
-    const float d = static_cast<float>(high - low);
-    float hue = 0;
-    if (high == r) {
-        hue = 60 * (static_cast<float>(g - b) / d);
-        if (hue < 0) {
-            hue += 360;
-        }
-    } else if (high == g) {
-        hue = 60 * ((static_cast<float>(b - r) / d) + 2);
-    } else {
-        hue = 60 * ((static_cast<float>(r - g) / d) + 4);
-    }
+    const float hue = hueOf(r, g, b, high, low);
     if (hue >= 335 || hue < 22) {
         return MAIN;
     }
@@ -115,67 +142,184 @@ u8 nearest(int r, int g, int b)
     return static_cast<u8>(best);
 }
 
-/* The table for the look: each shade of a ramp given the look's colour,
- * as bright against it as the shade is against the ramp's reference
- * (lighter ones towards white). */
-const u8 *tableFor(u8 look)
+/* The table for the colours: each shade of a ramp given its colour, as
+ * bright against it as the shade is against the ramp's reference (lighter
+ * ones towards white). */
+const u8 *tableFor(const Colours &colours)
 {
-    if (tableLook == look) {
+    if (tableMade && tableColours == colours) {
         return table;
     }
-    const RGB *colours = gamePalette->data.get();
+    const RGB *palette = gamePalette->data.get();
     for (int i = 0; i < 256; i++) {
-        const int r = full(colours[i].red);
-        const int g = full(colours[i].green);
-        const int b = full(colours[i].blue);
+        const int r = full(palette[i].red);
+        const int g = full(palette[i].green);
+        const int b = full(palette[i].blue);
         const int ramp = rampOf(r, g, b);
         if (ramp < 0) {
             table[i] = static_cast<u8>(i);
             continue;
         }
         const float scale = static_cast<float>(std::max({r, g, b})) / static_cast<float>(REFERENCE[ramp]);
-        const std::uint32_t colour = LOOKS[look].rgb[ramp];
+        const std::uint32_t colour = colours.rgb[ramp];
         auto shade = [scale](std::uint32_t component) {
             const auto v = static_cast<float>(component & 0xffU);
-            const float out =
-                scale <= 1 ? v * scale : v + ((255 - v) * std::min(1.0F, (scale - 1) * 0.6F));
+            const float out = scale <= 1 ? v * scale : v + ((255 - v) * std::min(1.0F, (scale - 1) * 0.6F));
             return static_cast<int>(std::clamp(out, 0.0F, 255.0F));
         };
         table[i] = nearest(shade(colour >> 16), shade(colour >> 8), shade(colour));
     }
-    tableLook = look;
+    tableColours = colours;
+    tableMade = true;
     return table;
 }
 
-/* The choice: the look lit, the frame of the Silencer shown. */
+/* A colour as hue (0-360), saturation and value (0-1). */
+struct Hsv {
+    float h;
+    float s;
+    float v;
+};
+
+std::uint32_t rgbOf(const Hsv &c)
+{
+    float h = c.h;
+    while (h >= 360) {
+        h -= 360;
+    }
+    h = std::max(0.0F, h) / 60;
+    const int sixth = static_cast<int>(h);
+    const float f = h - static_cast<float>(sixth);
+    const float p = c.v * (1 - c.s);
+    const float q = c.v * (1 - (c.s * f));
+    const float t = c.v * (1 - (c.s * (1 - f)));
+    float r = c.v;
+    float g = t;
+    float b = p;
+    switch (sixth % 6) {
+    case 1:
+        r = q;
+        g = c.v;
+        b = p;
+        break;
+    case 2:
+        r = p;
+        g = c.v;
+        b = t;
+        break;
+    case 3:
+        r = p;
+        g = q;
+        b = c.v;
+        break;
+    case 4:
+        r = t;
+        g = p;
+        b = c.v;
+        break;
+    case 5:
+        r = c.v;
+        g = p;
+        b = q;
+        break;
+    default:
+        break;
+    }
+    const auto byte = [](float v) { return static_cast<std::uint32_t>((std::clamp(v, 0.0F, 1.0F) * 255) + 0.5F); };
+    return byte(r) << 16 | byte(g) << 8 | byte(b);
+}
+
+Hsv hsvOf(std::uint32_t rgb)
+{
+    const auto r = static_cast<int>(rgb >> 16 & 0xffU);
+    const auto g = static_cast<int>(rgb >> 8 & 0xffU);
+    const auto b = static_cast<int>(rgb & 0xffU);
+    const int high = std::max({r, g, b});
+    const int low = std::min({r, g, b});
+    return Hsv{hueOf(r, g, b, high, low), high == 0 ? 0 : static_cast<float>(high - low) / static_cast<float>(high),
+               static_cast<float>(high) / 255};
+}
+
+/* The choice's places, on the 640x480 screen. */
+const float PANEL_X = 40;
+const float PANEL_Y = 28;
+const float PANEL_W = 560;
+const float PANEL_H = 446;
+const float PICTURE_X = 62;
+const float PICTURE_Y = 96;
+const float PICTURE_W = 190;
+const float PICTURE_H = 236;
+const float TAB_X = 276;
+const float TAB_Y = 76;
+const float TAB_W = 300;
+const float TAB_H = 36;
+const float TAB_STEP = 40;
+const int SQUARE_X = 276;
+const int SQUARE_Y = 204;
+const int SQUARE_W = 190;
+const int SQUARE_H = 126;
+const int HUE_X = 476;
+const int HUE_W = 22;
+const float QUICK_X = 276;
+const float QUICK_Y = 344;
+const float QUICK_SIZE = 21;
+const float QUICK_GAP = 4;
+const float PRESET_X = 276;
+const float PRESET_Y = 372;
+const float PRESET_W = 102;
+const float PRESET_H = 20;
+const float PRESET_GAP = 4;
+const int PRESETS_ROW = 3;
+const float BUTTON_Y = 420;
+const float BUTTON_W = 88;
+const float BUTTON_H = 22;
+const float RESET_X = 62;
+const float DONE_X = 160;
+const char *const RAMP_NAMES[RAMPS] = {"MAIN COLOUR", "CHEST LOGO", "BACKPACK"};
+const char *const RAMP_HINTS[RAMPS] = {"THE ARMOUR", "THE EMBLEM", "THE PACK"};
+
+bool inside(i16 x, i16 y, float left, float top, float w, float h)
+{
+    const auto fx = static_cast<float>(x);
+    const auto fy = static_cast<float>(y);
+    return fx >= left && fx < left + w && fy >= top && fy < top + h;
+}
+
+/* The choice: the ramp being chosen, its colour as hue, saturation and
+ * value (the hue kept while the colour is grey), and the drag going on (1
+ * the square, 2 the hue bar). */
 class ColoursGump : public NewGump {
 public:
     ColoursGump();
+    ~ColoursGump() override;
+    ColoursGump(const ColoursGump &) = delete;
+    ColoursGump &operator=(const ColoursGump &) = delete;
+    ColoursGump(ColoursGump &&) = delete;
+    ColoursGump &operator=(ColoursGump &&) = delete;
     void handleLeftButton(NewGumpEvent *event) override;
     void handleRightButton(NewGumpEvent * /*event*/) override { close(); }
     void handleMouseMotion(NewGumpEvent *event) override;
     void handleKeyboard(NewGumpEvent *event) override;
     void paintSelf(i16 /*x*/, i16 /*y*/) override {}
+    void draw() const;
+
+private:
+    void pick(i16 x, i16 y);
+    void setColour(std::uint32_t rgb, bool keepHsv);
+    void choose(int ramp);
+    int ramp_ = MAIN;
+    Hsv hsv_{};
+    int drag_ = 0;
 };
 
 ColoursGump *&openGump = gameGlobal<ColoursGump *>(nullptr);
 
-/* The list: its rows' left, top and size; the preview's middle. */
-const i16 LIST_X = 120;
-const i16 LIST_Y = 92;
-const i16 ROW = 24;
-const i16 ROW_WIDTH = 220;
-const i16 PREVIEW_X = 470;
-const i16 PREVIEW_Y = 250;
-const int ZOOM = 3;
-
-i16 rowAt(i16 x, i16 y)
+/* The Silencer drawn again in the colours. */
+void colouredAgain()
 {
-    if (x < LIST_X || x >= LIST_X + ROW_WIDTH || y < LIST_Y) {
-        return -1;
+    if (Npc(1).isValid()) {
+        redrawItem(1);
     }
-    const int row = (y - LIST_Y) / ROW;
-    return row < LOOK_COUNT ? static_cast<i16>(row) : -1;
 }
 
 ColoursGump::ColoursGump() : NewGump(NewGumpId(), nullptr, 0)
@@ -184,31 +328,103 @@ ColoursGump::ColoursGump() : NewGump(NewGumpId(), nullptr, 0)
     bounds.set(0, 0, static_cast<s16>(drawViewport->right() - drawViewport->left()),
                static_cast<s16>(drawViewport->bottom() - drawViewport->top()));
     addAcceptedArguments(-1, 0);
+    hsv_ = hsvOf(chosen.rgb[ramp_]);
+    openGump = this;
 }
 
-void choose(i16 look)
+ColoursGump::~ColoursGump()
 {
-    if (look >= 0 && look < LOOK_COUNT && look != chosenLook) {
-        chosenLook = static_cast<u8>(look);
-        /* The Silencer drawn again in it. */
-        redrawItem(1);
+    if (openGump == this) {
+        openGump = nullptr;
+    }
+}
+
+void ColoursGump::choose(int ramp)
+{
+    ramp_ = ramp;
+    hsv_ = hsvOf(chosen.rgb[ramp_]);
+}
+
+void ColoursGump::setColour(std::uint32_t rgb, bool keepHsv)
+{
+    chosen.rgb[ramp_] = rgb;
+    if (!keepHsv) {
+        hsv_ = hsvOf(rgb);
+    }
+    colouredAgain();
+}
+
+void ColoursGump::pick(i16 x, i16 y)
+{
+    if (drag_ == 1) {
+        hsv_.s = std::clamp(static_cast<float>(x - SQUARE_X) / (SQUARE_W - 1), 0.0F, 1.0F);
+        hsv_.v = 1 - std::clamp(static_cast<float>(y - SQUARE_Y) / (SQUARE_H - 1), 0.0F, 1.0F);
+        setColour(rgbOf(hsv_), true);
+    } else if (drag_ == 2) {
+        hsv_.h = std::clamp(static_cast<float>(y - SQUARE_Y) / (SQUARE_H - 1), 0.0F, 1.0F) * 359;
+        setColour(rgbOf(hsv_), true);
     }
 }
 
 void ColoursGump::handleLeftButton(NewGumpEvent *event)
 {
+    if (event->isMouseRelease()) {
+        drag_ = 0;
+        return;
+    }
     if (!event->isMousePress()) {
         return;
     }
-    const i16 row = rowAt(eventX(event), eventY(event));
-    if (row < 0) {
-        close();
+    const i16 x = eventX(event);
+    const i16 y = eventY(event);
+    for (int ramp = 0; ramp < RAMPS; ramp++) {
+        if (inside(x, y, TAB_X, TAB_Y + (TAB_STEP * static_cast<float>(ramp)), TAB_W, TAB_H)) {
+            choose(ramp);
+            return;
+        }
+    }
+    if (inside(x, y, SQUARE_X, SQUARE_Y, SQUARE_W, SQUARE_H)) {
+        drag_ = 1;
+        pick(x, y);
         return;
     }
-    choose(row);
+    if (inside(x, y, HUE_X, SQUARE_Y, HUE_W, SQUARE_H)) {
+        drag_ = 2;
+        pick(x, y);
+        return;
+    }
+    for (int i = 0; i < QUICK_COUNT; i++) {
+        if (inside(x, y, QUICK_X + ((QUICK_SIZE + QUICK_GAP) * static_cast<float>(i)), QUICK_Y, QUICK_SIZE,
+                   QUICK_SIZE)) {
+            setColour(QUICK[i], false);
+            return;
+        }
+    }
+    for (int i = 0; i < PRESET_COUNT; i++) {
+        const float left = PRESET_X + ((PRESET_W + PRESET_GAP) * static_cast<float>(i % PRESETS_ROW));
+        const float top = PRESET_Y + ((PRESET_H + PRESET_GAP) * static_cast<float>(i / PRESETS_ROW));
+        if (inside(x, y, left, top, PRESET_W, PRESET_H)) {
+            chosen = PRESETS[i].colours;
+            choose(ramp_);
+            colouredAgain();
+            return;
+        }
+    }
+    if (inside(x, y, RESET_X, BUTTON_Y, BUTTON_W, BUTTON_H)) {
+        chosen = PRESETS[0].colours;
+        choose(ramp_);
+        colouredAgain();
+    } else if (inside(x, y, DONE_X, BUTTON_Y, BUTTON_W, BUTTON_H)) {
+        close();
+    }
 }
 
-void ColoursGump::handleMouseMotion(NewGumpEvent * /*event*/) {}
+void ColoursGump::handleMouseMotion(NewGumpEvent *event)
+{
+    if (drag_ != 0) {
+        pick(eventX(event), eventY(event));
+    }
+}
 
 void ColoursGump::handleKeyboard(NewGumpEvent *event)
 {
@@ -221,34 +437,49 @@ void ColoursGump::handleKeyboard(NewGumpEvent *event)
     switch (event->argument) {
     case ASCII_ESCAPE:
     case '\r':
-    case ' ':
         close();
         break;
     case KEYCODE_SCAN | SCAN_UP:
-        choose(static_cast<i16>((chosenLook + LOOK_COUNT - 1) % LOOK_COUNT));
+        choose((ramp_ + RAMPS - 1) % RAMPS);
         break;
     case KEYCODE_SCAN | SCAN_DOWN:
-        choose(static_cast<i16>((chosenLook + 1) % LOOK_COUNT));
+        choose((ramp_ + 1) % RAMPS);
         break;
     default:
         break;
     }
 }
 
-/* The preview's pixels: the Silencer's frame in the look, then each pixel
- * ZOOM times. */
-const int PREVIEW = 160;
+std::uint32_t opaque(std::uint32_t rgb)
+{
+    return (rgb << 8) | 0xffU;
+}
+
+/* An outline of a box, a pixel wide. */
+void outline(float x, float y, float w, float h, std::uint32_t colour)
+{
+    overlayBox(x, y, w, 1, colour);
+    overlayBox(x, y + h - 1, w, 1, colour);
+    overlayBox(x, y, 1, h, colour);
+    overlayBox(x + w - 1, y, 1, h, colour);
+}
+
+/* The preview's pixels: the Silencer standing, turning round a direction
+ * at a time, in the colours, each pixel ZOOM times. */
+const int PREVIEW = 120;
+const int ZOOM = 2;
 u8 previewPixels[PREVIEW * PREVIEW];
 u32 previewRows[PREVIEW];
 std::uint32_t previewPicture[PREVIEW * ZOOM * PREVIEW * ZOOM];
+/* The Silencer's shape (animcach.h). */
+const u16 SILENCER_SHAPE = 1;
 
 void preview()
 {
-    Npc npc(1);
-    if (!npc.isValid()) {
-        return;
-    }
-    ShapeFrame *frame = cachedShapeFrame(npc.shape(), npc.frame());
+    AnimFrame step;
+    const auto direction = static_cast<u8>(((systemTimer->time() / 40) % 8) * 2);
+    getAnimFrame(SILENCER_SHAPE, ANIM_STAND, direction, 0, &step);
+    ShapeFrame *frame = cachedShapeFrame(SILENCER_SHAPE, step.frame);
     if (frame == nullptr) {
         return;
     }
@@ -257,13 +488,13 @@ void preview()
         previewRows[y] = static_cast<u32>(y * PREVIEW);
     }
     const ViewportPixels pixels{previewPixels, previewRows, 0, 0, PREVIEW - 1, PREVIEW - 1};
-    const u8 *look = tableFor(chosenLook);
+    const u8 *look = tableFor(chosen);
     const auto put = [look](u8 &out, u8 in) { out = look[in]; };
     const auto *bytes = reinterpret_cast<const u8 *>(frame);
-    /* Its feet a little below the middle. */
+    /* Its feet near the bottom. */
     const s32 x = PREVIEW / 2;
-    const s32 y = (PREVIEW * 3) / 4;
-    if ((itemFlags[npc.id] & ITEM_FLIPPED) != 0) {
+    const s32 y = PREVIEW - 12;
+    if (step.flipped != 0U) {
         drawframe::draw<true>(pixels, x, y, bytes, put);
     } else {
         drawframe::draw<false>(pixels, x, y, bytes, put);
@@ -279,37 +510,160 @@ void preview()
                 continue;
             }
             const RGB &c = colours[pixel];
-            out = (static_cast<std::uint32_t>(c.red) << 26) | (static_cast<std::uint32_t>(c.green) << 18) |
-                  (static_cast<std::uint32_t>(c.blue) << 10) | 0xffU;
+            out = (static_cast<std::uint32_t>(full(c.red)) << 24) | (static_cast<std::uint32_t>(full(c.green)) << 16) |
+                  (static_cast<std::uint32_t>(full(c.blue)) << 8) | 0xffU;
         }
     }
-    overlayPicture(previewPicture, side, side, static_cast<float>(PREVIEW_X - (side / 2)),
-                   static_cast<float>(PREVIEW_Y - (side / 2)), static_cast<float>(side), static_cast<float>(side));
+    const float middle = PICTURE_X + (PICTURE_W / 2);
+    overlayPicture(previewPicture, side, side, middle - static_cast<float>(side / 2), PICTURE_Y + PICTURE_H - side - 4,
+                   static_cast<float>(side), static_cast<float>(side));
 }
 
-std::uint32_t opaque(std::uint32_t rgb)
+/* The square of the hue's shades (saturation across, value down) and the
+ * bar of hues. */
+std::uint32_t squarePicture[SQUARE_W * SQUARE_H];
+std::uint32_t huePicture[HUE_W * SQUARE_H];
+
+const std::uint32_t PANEL = 0x0a0e16f0;
+const std::uint32_t EDGE = 0x506ea0ff;
+
+void ColoursGump::draw() const
 {
-    return (rgb << 8) | 0xffU;
+    overlayBox(-1000, -1000, 3000, 3000, 0x000000ff);
+    overlayBox(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, PANEL);
+    outline(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, EDGE);
+    overlayBox(PICTURE_X, PICTURE_Y, PICTURE_W, PICTURE_H, 0x1a202cff);
+    outline(PICTURE_X, PICTURE_Y, PICTURE_W, PICTURE_H, EDGE);
+    for (int ramp = 0; ramp < RAMPS; ramp++) {
+        const float top = TAB_Y + (TAB_STEP * static_cast<float>(ramp));
+        const bool on = ramp == ramp_;
+        overlayBox(TAB_X, top, TAB_W, TAB_H, on ? 0x1e3a66ffU : 0x18202effU);
+        outline(TAB_X, top, TAB_W, TAB_H, on ? 0x96c8ffffU : EDGE);
+        overlayBox(TAB_X + 5, top + 7, 22, 22, opaque(chosen.rgb[ramp]));
+        outline(TAB_X + 5, top + 7, 22, 22, 0x000000ff);
+    }
+    for (int y = 0; y < SQUARE_H; y++) {
+        const float value = 1 - (static_cast<float>(y) / (SQUARE_H - 1));
+        for (int x = 0; x < SQUARE_W; x++) {
+            squarePicture[(y * SQUARE_W) + x] =
+                opaque(rgbOf(Hsv{hsv_.h, static_cast<float>(x) / (SQUARE_W - 1), value}));
+        }
+        const std::uint32_t hue = opaque(rgbOf(Hsv{static_cast<float>(y) * 359 / (SQUARE_H - 1), 1, 1}));
+        std::fill_n(&huePicture[y * HUE_W], HUE_W, hue);
+    }
+    overlayPicture(squarePicture, SQUARE_W, SQUARE_H, SQUARE_X, SQUARE_Y, SQUARE_W, SQUARE_H);
+    outline(SQUARE_X, SQUARE_Y, SQUARE_W, SQUARE_H, EDGE);
+    overlayPicture(huePicture, HUE_W, SQUARE_H, HUE_X, SQUARE_Y, HUE_W, SQUARE_H);
+    outline(HUE_X, SQUARE_Y, HUE_W, SQUARE_H, EDGE);
+    const float markX = SQUARE_X + (hsv_.s * (SQUARE_W - 1));
+    const float markY = SQUARE_Y + ((1 - hsv_.v) * (SQUARE_H - 1));
+    outline(markX - 5, markY - 5, 10, 10, 0x000000ff);
+    outline(markX - 4, markY - 4, 8, 8, 0xffffffff);
+    const float hueY = SQUARE_Y + (hsv_.h / 359 * (SQUARE_H - 1));
+    outline(HUE_X - 3, hueY - 3, HUE_W + 6, 6, 0x000000ff);
+    outline(HUE_X - 2, hueY - 2, HUE_W + 4, 4, 0xffffffff);
+    for (int i = 0; i < QUICK_COUNT; i++) {
+        const float left = QUICK_X + ((QUICK_SIZE + QUICK_GAP) * static_cast<float>(i));
+        overlayBox(left, QUICK_Y, QUICK_SIZE, QUICK_SIZE, opaque(QUICK[i]));
+        outline(left, QUICK_Y, QUICK_SIZE, QUICK_SIZE, 0x000000ff);
+    }
+    for (int i = 0; i < PRESET_COUNT; i++) {
+        const float left = PRESET_X + ((PRESET_W + PRESET_GAP) * static_cast<float>(i % PRESETS_ROW));
+        const float top = PRESET_Y + ((PRESET_H + PRESET_GAP) * static_cast<float>(i / PRESETS_ROW));
+        const bool on = chosen == PRESETS[i].colours;
+        overlayBox(left, top, PRESET_W, PRESET_H, on ? 0x1e3a66ffU : 0x18202effU);
+        outline(left, top, PRESET_W, PRESET_H, on ? 0x96c8ffffU : EDGE);
+        for (int ramp = 0; ramp < RAMPS; ramp++) {
+            overlayBox(left + 3, top + 3 + static_cast<float>(ramp * 5), 6, 4, opaque(PRESETS[i].colours.rgb[ramp]));
+        }
+    }
+    for (const float left : {RESET_X, DONE_X}) {
+        overlayBox(left, BUTTON_Y, BUTTON_W, BUTTON_H, 0x18202effU);
+        outline(left, BUTTON_Y, BUTTON_W, BUTTON_H, EDGE);
+    }
+    wordsBegin();
+    wordsText(7, 320, static_cast<i16>(PANEL_Y + 18), "CHARACTER COLOURS", 0);
+    for (int ramp = 0; ramp < RAMPS; ramp++) {
+        const auto top = static_cast<i16>(TAB_Y + (TAB_STEP * static_cast<float>(ramp)));
+        wordsText(7, static_cast<i16>(TAB_X + 34), static_cast<i16>(top + 5), RAMP_NAMES[ramp], 1);
+        wordsText(7, static_cast<i16>(TAB_X + 34), static_cast<i16>(top + 19), RAMP_HINTS[ramp], 1);
+        char hex[8];
+        std::snprintf(hex, sizeof hex, "%06X", static_cast<unsigned>(chosen.rgb[ramp]));
+        wordsText(7, static_cast<i16>(TAB_X + TAB_W - 8), static_cast<i16>(top + 12), hex, -1);
+    }
+    for (int i = 0; i < PRESET_COUNT; i++) {
+        const float left = PRESET_X + ((PRESET_W + PRESET_GAP) * static_cast<float>(i % PRESETS_ROW));
+        const float top = PRESET_Y + ((PRESET_H + PRESET_GAP) * static_cast<float>(i / PRESETS_ROW));
+        wordsText(7, static_cast<i16>(left + 13), static_cast<i16>(top + 5), PRESETS[i].name, 1);
+    }
+    wordsText(7, static_cast<i16>(PICTURE_X + (PICTURE_W / 2)), static_cast<i16>(PICTURE_Y + PICTURE_H + 10),
+              "PREVIEW", 0);
+    wordsText(7, static_cast<i16>(RESET_X + (BUTTON_W / 2)), static_cast<i16>(BUTTON_Y + 6), "RESET", 0);
+    wordsText(7, static_cast<i16>(DONE_X + (BUTTON_W / 2)), static_cast<i16>(BUTTON_Y + 6), "DONE", 0);
+    wordsText(7, static_cast<i16>(RESET_X), static_cast<i16>(BUTTON_Y + 32), "ESC CLOSES", 1);
+    wordsEnd();
+    preview();
 }
 
-}
-
-u8 coloursSetting()
+/* A colour of six hex digits; false for another text. */
+bool hexColour(const std::string &text, std::uint32_t *rgb)
 {
-    return chosenLook;
+    if (text.size() != 6) {
+        return false;
+    }
+    std::uint32_t value = 0;
+    for (const char c : text) {
+        int digit = -1;
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'F') {
+            digit = c - 'A' + 10;
+        }
+        if (digit < 0) {
+            return false;
+        }
+        value = (value << 4) | static_cast<std::uint32_t>(digit);
+    }
+    *rgb = value;
+    return true;
 }
 
-void setColoursSetting(u8 look)
+}
+
+std::string coloursText()
 {
-    chosenLook = look < LOOK_COUNT ? look : 0;
+    char text[32];
+    std::snprintf(text, sizeof text, "%06x,%06x,%06x", static_cast<unsigned>(chosen.rgb[0]),
+                  static_cast<unsigned>(chosen.rgb[1]), static_cast<unsigned>(chosen.rgb[2]));
+    return text;
+}
+
+void setColoursText(const std::string &text)
+{
+    Colours read{};
+    std::size_t start = 0;
+    for (int ramp = 0; ramp < RAMPS; ramp++) {
+        const std::size_t comma = text.find(',', start);
+        const std::string part = text.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (!hexColour(part, &read.rgb[ramp])) {
+            /* The preset's number, as the port wrote it first. */
+            const int preset = std::atoi(text.c_str());
+            chosen = PRESETS[preset >= 0 && preset < PRESET_COUNT ? preset : 0].colours;
+            return;
+        }
+        start = comma == std::string::npos ? text.size() : comma + 1;
+    }
+    chosen = read;
 }
 
 bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrored)
 {
-    if (chosenLook == 0U) {
+    if (chosen == PRESETS[0].colours) {
         return false;
     }
-    const u8 *look = tableFor(chosenLook);
+    const u8 *look = tableFor(chosen);
     const auto put = [look](u8 &out, u8 in) { out = look[in]; };
     const auto *bytes = reinterpret_cast<const u8 *>(frame);
     if (mirrored) {
@@ -326,12 +680,15 @@ void openColours()
         return;
     }
     freezeWorld(1);
-    openGump = new ColoursGump;
-    openModalGump(openGump, static_cast<u32>(-1), [](s32 /*result*/) {
-        openGump = nullptr;
+    openModalGump(new ColoursGump, static_cast<u32>(-1), [](s32 /*result*/) {
         thawWorld(1);
         writeEnhancedOptions();
     });
+}
+
+NewGump *coloursGump()
+{
+    return new ColoursGump;
 }
 
 bool drawColours()
@@ -339,23 +696,7 @@ bool drawColours()
     if (openGump == nullptr) {
         return false;
     }
-    overlayBox(-200, 0, SCREEN_WIDTH + 400, SCREEN_HEIGHT, 0x000000a0U);
-    overlayBox(LIST_X - 24, LIST_Y - 52, 520, (LOOK_COUNT * ROW) + 96, 0x0a0e16e8U);
-    wordsBegin();
-    wordsText(14, static_cast<i16>(LIST_X - 8), static_cast<i16>(LIST_Y - 40), "SILENCER COLOURS", 1);
-    for (int i = 0; i < LOOK_COUNT; i++) {
-        const auto top = static_cast<float>(LIST_Y + (i * ROW));
-        if (i == chosenLook) {
-            overlayBox(LIST_X - 8, top - 2, ROW_WIDTH + 8, ROW - 2, 0x3476cdc0U);
-        }
-        for (int ramp = 0; ramp < RAMPS; ramp++) {
-            overlayBox(static_cast<float>(LIST_X + (ramp * 18)), top + 2, 14, 14, opaque(LOOKS[i].rgb[ramp]));
-        }
-        wordsText(13, static_cast<i16>(LIST_X + 64), static_cast<i16>(top + 4), LOOKS[i].name, 1);
-    }
-    wordsText(13, static_cast<i16>(LIST_X - 8), static_cast<i16>(LIST_Y + (LOOK_COUNT * ROW) + 12),
-              "CLICK OR UP AND DOWN CHOOSE. P OR ESC CLOSES.", 1);
-    wordsEnd();
-    preview();
+    openGump->draw();
+    drawMenuPointer();
     return true;
 }

@@ -29,6 +29,9 @@ void mapToOverlay(u16 x, u16 y, i16 z, float *screenX, float *screenY);
  * (0) or starts at it (1); a picture is centred on x,y; a frame of the
  * map's shapes has its origin at x,y, mirrored as a flipped item's. wordsEnd
  * gives them see-through by alpha. */
+/* The game's pointer as the overlay's arrow, for a screen of the port's
+ * drawn over the game's picture, which hides the game's own (colours.h). */
+void drawMenuPointer();
 void wordsBegin();
 void wordsText(i16 font, i16 x, i16 y, const char *text, i16 align);
 [[nodiscard]] i16 wordsWidth(i16 font, const char *text);

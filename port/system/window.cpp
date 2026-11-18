@@ -367,10 +367,16 @@ void showTitle();
  * width x height pixels (over the whole screen, its display's), at the
  * largest whole scale that keeps it 640x480 or more: the native
  * resolution, more of the world the larger the window. */
+u8 followedZoom = 0;
+
 void followPicture(int width, int height)
 {
     if (width > 0 && height > 0) {
-        const int scale = std::max(1, std::min(width / SCREEN_WIDTH, height / SCREEN_HEIGHT));
+        int scale = std::max(1, std::min(width / SCREEN_WIDTH, height / SCREEN_HEIGHT));
+        if (const u8 zoom = wideZoomNow(); zoom != 0U) {
+            scale = std::min(scale, static_cast<int>(zoom));
+        }
+        followedZoom = wideZoomNow();
         setWideWidth(static_cast<u16>(std::min(width / scale, static_cast<int>(WIDE_MOST))));
         setWideHeight(static_cast<u16>(std::min(height / scale, static_cast<int>(TALL_MOST))));
     }
@@ -1245,6 +1251,14 @@ void drawScreen(bool withStatus)
     ScreenView view = shown.view;
     view.pixels = shown.pixels.data();
     keepFrameShape();
+    /* A new zoom: the frame again for the window's picture. */
+    if (wideZoomNow() != followedZoom) {
+        int pixelWidth = 0;
+        int pixelHeight = 0;
+        if (SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight)) {
+            followPicture(pixelWidth, pixelHeight);
+        }
+    }
     if (!screenTexture(view)) {
         failure("no picture");
     }

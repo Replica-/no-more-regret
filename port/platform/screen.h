@@ -65,6 +65,11 @@ void screenShowSides(const std::uint8_t *pixels, std::uint16_t width);
  * rows (the port's native resolution: the window's own shape at a whole
  * scale); 480 when off. */
 std::uint16_t screenWideHeight();
+/* The native resolution's pixel size, the window's pixels a pixel of the
+ * frame: 0 the largest whole one that keeps 640x480 or more, else at most
+ * 1 to 4 (a larger frame, more of the world). */
+void screenSetZoom(std::uint8_t zoom);
+std::uint8_t screenZoom();
 /* A box of the 640x480 screen, its corners included. */
 struct ScreenBox {
     std::int16_t left, top, right, bottom;

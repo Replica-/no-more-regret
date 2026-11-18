@@ -1,5 +1,6 @@
 /* What the port's enhancements draw over the screen. See hud.h. */
 #include "hud.h"
+#include "enhancements.h"
 #include "gamestate.h"
 #include "camera.h"
 #include "cafont.h"
@@ -24,6 +25,7 @@
 #include "screen.h"
 #include "systimer.h"
 #include "wheel.h"
+#include "mousectl.h"
 #include "world.h"
 #include "missionmap.h"
 #include "type.h"
@@ -204,6 +206,9 @@ void healthBars()
 
 void path()
 {
+    if (!pathLineSetting()) {
+        return;
+    }
     const ItemPoint *points = nullptr;
     const u8 count = walkPath(&points);
     for (u8 i = 0; i < count; i++) {
@@ -256,6 +261,13 @@ constexpr std::size_t PIXELS = static_cast<std::size_t>(SCREEN_WIDTH) * SCREEN_H
 u8 canvas[PIXELS];
 std::uint32_t picture[PIXELS];
 
+}
+
+void drawMenuPointer()
+{
+    if (mouseCtl != nullptr) {
+        arrowCursor(static_cast<float>(mouseCtl->pointerX), static_cast<float>(mouseCtl->pointerY), 0);
+    }
 }
 
 void wordsBegin()

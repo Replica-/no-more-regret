@@ -63,6 +63,8 @@ void setWideWidth(u16 width);
 const u16 TALL_MOST = 864;
 void setWideHeight(u16 height);
 u16 wideFrameHeight();
+/* screen.h's zoom, for the window thread. */
+u8 wideZoomNow();
 /* The frame's width for 480 rows: the wide screen's, 640 when it is off;
  * and its mode (screen.h's), for the window thread. */
 u16 wideFrameWidth();

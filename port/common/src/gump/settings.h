@@ -84,7 +84,9 @@ void playSettingsOpened();
 
 class SettingsGump : public NewGump {
 public:
-    SettingsGump();
+    /* The options gump's settings and the port's, or columns of the
+     * port's own (enhancements.h's page). */
+    explicit SettingsGump(SettingColumns columns = gameSettingColumns());
     ~SettingsGump() override;
     SettingsGump(const SettingsGump &) = delete;
     SettingsGump &operator=(const SettingsGump &) = delete;
