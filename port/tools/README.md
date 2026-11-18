@@ -39,6 +39,7 @@ These read the files of a game's CD (`cd/<game>`, [`../../cd/README.md`](../../c
 | `subtitle_text.py` | Writes every line of the movies' subtitles as the port reads them, with its frames and hash, as JSON for translating (`build/text/<game>_subtitles.json`) | by hand ([`../lang/README.md`](../lang/README.md)) |
 | `baseline.py` | The baseline: the states, screens, sounds and saves the scenario tests keep, by name, size and SHA-256, against `<game>/test/expected/baseline.tsv`. `scenario NAME` runs one scenario as its test; `check` compares; `record` writes the file again after a change meant to change them. `--scenarios FILE` adds scenarios kept outside the repository | ctest `milestone`, `movies`, ..., `baseline` |
 | `replays.py PROGRAM` | Replays the player's recordings under `replays/` (as `--record` makes them, a debug feature: with `--debug-feature`) without a window and compares their states with those they hold; `--accept` takes the new states after a change meant to change the play; `--wide` replays them with the wide screen | by hand |
+| `walk_tests.py OUTDIR` | The pointer mode's click-to-walk in No Remorse's mission 1, traced (`REGRET_WALK_TRACE`, the Silencer immortal): walks to points he can stand on and clicks out of his reach, each scored (arrived, ticks, distance left and walked, retreads, plans) with a picture of the walk | by hand |
 
 ## Changes that change nothing
 

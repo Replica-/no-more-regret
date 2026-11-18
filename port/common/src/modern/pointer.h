@@ -60,6 +60,10 @@ void pointerUse(u16 item);
  * place of the reticle's, which the game keeps on a circle round him);
  * false when the mode is off. */
 bool pointerAimPoint(ItemPoint *point);
+/* The map point under screen point x,y: where its line first meets the box
+ * of the item under it, else at height; on the ground, an item's that is not
+ * a floor at its foot (a walk's goal). */
+void pointerMapPoint(i16 screenX, i16 screenY, int height, bool ground, ItemPoint *point);
 /* Where the Silencer's next shot would go, for the overlay: from the
  * muzzle to the point aimed at, stopped at what is in the way first
  * (blocked); its spread there across and up, as SuperSprite::launch

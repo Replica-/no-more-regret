@@ -542,21 +542,26 @@ bool pointerAimPoint(ItemPoint *point)
         return false;
     }
     Npc npc(controlledActor);
-    u16 mapX;
-    u16 mapY;
-    screenToMap(pointerScreenX(), pointerScreenY(), &mapX, &mapY);
-    /* The points under the pointer are a line through the map, the
-     * screen's point lifted by twice the height (placeReticle's): x + 2h,
-     * y + 2h, h. The point aimed at is where it first meets the box of the
-     * item under the pointer (the NPC, the crate, the floor), from the
-     * viewer's side, the highest; without one, at the height of the
-     * Silencer's shots. */
     u16 muzzleX;
     u16 muzzleZ;
     fireOffset(static_cast<u8>(npc.direction()), &muzzleX, &muzzleX, &muzzleZ);
-    int height = itemZ[npc.id] + muzzleZ;
+    pointerMapPoint(pointerScreenX(), pointerScreenY(), itemZ[npc.id] + muzzleZ, false, point);
+    return true;
+}
+
+void pointerMapPoint(i16 screenX, i16 screenY, int height, bool ground, ItemPoint *point)
+{
+    u16 mapX;
+    u16 mapY;
+    screenToMap(screenX, screenY, &mapX, &mapY);
+    /* The points under the screen point are a line through the map, the
+     * screen's point lifted by twice the height (placeReticle's): x + 2h,
+     * y + 2h, h. The point is where it first meets the box of the item
+     * under it (the NPC, the crate, the floor), from the viewer's side, the
+     * highest; on the ground, an item's not the floor's at its foot; without
+     * one, at height. */
     u16 found = 0;
-    if (itemAt(&found, pointerScreenX(), pointerScreenY()) && found != controlledActor) {
+    if (itemAt(&found, screenX, screenY) && found != controlledActor) {
         const Item it(found);
         i16 width;
         i16 depth;
@@ -573,11 +578,13 @@ bool pointerAimPoint(ItemPoint *point)
         const int highest = std::min({floorHalf(x - mapX), floorHalf(y - mapY), z + tall});
         const int lowest = std::max({ceilHalf(x - width + 1 - mapX), ceilHalf(y - depth + 1 - mapY), z});
         height = highest >= lowest ? highest : z + tall;
+        if (ground && typeFlags.info(it.shape()).land == 0U) {
+            height = z;
+        }
     }
     height = std::clamp(height, 0, 0xfa);
     const i16 lift = static_cast<i16>(height * 2);
     *point = ItemPoint(static_cast<u16>(mapX + lift), static_cast<u16>(mapY + lift), static_cast<u8>(height));
-    return true;
 }
 
 void pointerTick()
