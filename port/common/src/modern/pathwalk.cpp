@@ -24,8 +24,10 @@ namespace {
  * the nearest he has come to it, where the last step started and the steps
  * in a row that went nowhere, the directions that failed from there; a
  * wait before trying again; the stand after a walk the forward key let go;
- * the last plan's points, for the overlay. */
-const int PATH_POINTS = 24;
+ * the plan he follows: its points, the next of them, whether it reaches
+ * the goal and the goal it was made for (planned once, again only when he
+ * leaves it, is stuck or the goal moves). */
+const int PATH_POINTS = 240;
 struct Walk {
     u8 active;
     u8 hold;
@@ -43,6 +45,10 @@ struct Walk {
     std::int8_t stepDirection;
     u32 waitUntil;
     u8 count;
+    u8 next;
+    u8 reaches;
+    i16 planGoalX;
+    i16 planGoalY;
     ItemPoint points[PATH_POINTS];
     /* The point clicked (walkMark) and when; markAt 0 for none. */
     ItemPoint mark;
@@ -50,15 +56,24 @@ struct Walk {
 };
 Walk &walk = gameGlobal<Walk>();
 
-/* The grid's cell, its cells each way from the start and the most nodes a
- * plan looks at. */
+/* The grid's cell, its cells each way from the start (the most whose
+ * nodes an i16 numbers) and the most nodes a plan looks at. */
 const int CELL = 16;
-const int RADIUS = 48;
+const int RADIUS = 90;
 const int SIDE = (2 * RADIUS) + 1;
-const int MOST_EXPANDED = 1500;
+const int MOST_EXPANDED = 12000;
 const int HEAP = MOST_EXPANDED * 8;
+static_assert(SIDE * SIDE <= 32767);
 /* Arrived within this of the goal. */
 const i16 ARRIVED = 20;
+/* A point of the plan this near is passed; farther than LEFT_PATH from all
+ * the next ones he has left it. */
+const i16 PASSED = 12;
+const i16 LEFT_PATH = 48;
+/* The goal moved this far plans again (a held walk's, the pointer's). */
+const i16 GOAL_MOVED = 24;
+/* The next points a step heads for the farthest of. */
+const int LOOK_AHEAD = 8;
 
 /* The search's nodes: scratch outside the arena, written anew by each plan
  * (a rewind does not need them). */
@@ -218,8 +233,17 @@ bool plan(u16 shape, u16 npc, const ItemPoint &from)
         planNumber = 1;
     }
     const auto index = [](int cx, int cy) { return static_cast<i16>(((cy + RADIUS) * SIDE) + cx + RADIUS); };
-    const int gx = (walk.goalX - static_cast<i16>(from.x)) / CELL;
-    const int gy = (walk.goalY - static_cast<i16>(from.y)) / CELL;
+    /* The grid is the map's (its cells at whole multiples of CELL), the
+     * same for every plan: one moved with him finds a narrow way in one
+     * place and not a step on. The start is his own place, the cell he
+     * stands in. */
+    const int originX = from.x & ~(CELL - 1);
+    const int originY = from.y & ~(CELL - 1);
+    const auto cellPoint = [&](int cx, int cy, u8 z) {
+        return ItemPoint(static_cast<u16>(originX + (cx * CELL)), static_cast<u16>(originY + (cy * CELL)), z);
+    };
+    const int gx = (walk.goalX - originX) / CELL;
+    const int gy = (walk.goalY - originY) / CELL;
     const auto heuristic = [&](int cx, int cy) { return octile(gx - cx, gy - cy) * 12 / 10; };
     const auto node = [&](i16 at) -> Node & {
         Node &n = nodes[at];
@@ -255,7 +279,7 @@ bool plan(u16 shape, u16 npc, const ItemPoint &from)
             found = current;
             break;
         }
-        const ItemPoint at(static_cast<u16>(from.x + (cx * CELL)), static_cast<u16>(from.y + (cy * CELL)), here.z);
+        const ItemPoint at = current == start ? from : cellPoint(cx, cy, here.z);
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 if (dx == 0 && dy == 0) {
@@ -272,7 +296,7 @@ bool plan(u16 shape, u16 npc, const ItemPoint &from)
                 if (next.closed != 0U || g >= next.g) {
                     continue;
                 }
-                ItemPoint to(static_cast<u16>(from.x + (nx * CELL)), static_cast<u16>(from.y + (ny * CELL)), here.z);
+                ItemPoint to = cellPoint(nx, ny, here.z);
                 if (!walkMove(shape, npc, at, to)) {
                     continue;
                 }
@@ -283,21 +307,29 @@ bool plan(u16 shape, u16 npc, const ItemPoint &from)
             }
         }
     }
-    /* The points back from the end, then turned round. */
+    /* The nodes back from the end, then the first of them from the start
+     * (a longer plan is made again at its end), and the goal itself last. */
+    static i16 chain[MOST_EXPANDED + 1];
     i16 at = found >= 0 ? found : best;
-    ItemPoint reversed[PATH_POINTS * 4];
     int count = 0;
-    while (at != start && at >= 0 && count < static_cast<int>(std::size(reversed))) {
-        const int cx = (at % SIDE) - RADIUS;
-        const int cy = (at / SIDE) - RADIUS;
-        reversed[count++] = ItemPoint(static_cast<u16>(from.x + (cx * CELL)), static_cast<u16>(from.y + (cy * CELL)),
-                                      nodes[at].z);
+    while (at != start && at >= 0 && count < static_cast<int>(std::size(chain))) {
+        chain[count++] = at;
         at = nodes[at].parent;
     }
     walk.count = 0;
-    for (int i = count - 1; i >= 0 && walk.count < PATH_POINTS; i--) {
-        walk.points[walk.count++] = reversed[i];
+    walk.next = 0;
+    for (int i = count - 1; i >= 0 && walk.count < PATH_POINTS - 1; i--) {
+        const int cx = (chain[i] % SIDE) - RADIUS;
+        const int cy = (chain[i] / SIDE) - RADIUS;
+        walk.points[walk.count++] = cellPoint(cx, cy, nodes[chain[i]].z);
     }
+    walk.reaches = (found >= 0 && count < PATH_POINTS) ? 1 : 0;
+    if (walk.reaches != 0U) {
+        const u8 z = walk.count > 0 ? walk.points[walk.count - 1].z : from.z;
+        walk.points[walk.count++] = ItemPoint(static_cast<u16>(walk.goalX), static_cast<u16>(walk.goalY), z);
+    }
+    walk.planGoalX = walk.goalX;
+    walk.planGoalY = walk.goalY;
     return found >= 0;
 }
 
@@ -327,6 +359,7 @@ void start()
     walk.lastX = static_cast<i16>(itemX[npc.id]);
     walk.lastY = static_cast<i16>(itemY[npc.id]);
     walk.count = 0;
+    walk.next = 0;
     walk.pendingStand = 0;
 }
 
@@ -445,8 +478,8 @@ bool walkMark(ItemPoint *point, u32 *age)
 
 u8 walkPath(const ItemPoint **points)
 {
-    *points = walk.points;
-    return walk.active != 0U ? walk.count : 0;
+    *points = walk.points + walk.next;
+    return walk.active != 0U ? static_cast<u8>(walk.count - walk.next) : 0;
 }
 
 void walkTick()
@@ -508,17 +541,39 @@ void walkTick()
     }
     walk.best = std::min(walk.best, left);
     const u16 shape = npc.shape();
-    const bool reaches = plan(shape, npc.id, here);
-    if (walk.count == 0) {
-        blocked(8);
-        return;
+    /* Where he is on the plan: the nearest of its next points, those he is
+     * on passed. */
+    const auto away = [&](const ItemPoint &point) {
+        return std::max(std::abs(static_cast<i16>(point.x) - static_cast<i16>(here.x)),
+                        std::abs(static_cast<i16>(point.y) - static_cast<i16>(here.y)));
+    };
+    int nearest = -1;
+    int nearestAway = 0x7fff;
+    for (int i = walk.next; i < std::min<int>(walk.count, walk.next + LOOK_AHEAD + 4); i++) {
+        if (away(walk.points[i]) < nearestAway) {
+            nearest = i;
+            nearestAway = away(walk.points[i]);
+        }
     }
-    const ItemPoint &last = walk.points[walk.count - 1];
-    if (!reaches && distance(static_cast<i16>(last.x), static_cast<i16>(last.y)) >= walk.best - 8) {
-        /* As near as it gets: a plan that leads no nearer than he has been
-         * would only take him to and fro. */
-        blocked(12);
-        return;
+    if (nearest >= 0) {
+        walk.next = static_cast<u8>(nearestAway <= PASSED ? nearest + 1 : nearest);
+    }
+    const bool goalMoved =
+        std::max(std::abs(walk.goalX - walk.planGoalX), std::abs(walk.goalY - walk.planGoalY)) > GOAL_MOVED;
+    if (walk.count == 0 || walk.next >= walk.count || nearestAway > LEFT_PATH || goalMoved || walk.stuck != 0U) {
+        const bool reaches = plan(shape, npc.id, here);
+        if (walk.count == 0) {
+            blocked(8);
+            return;
+        }
+        const ItemPoint &last = walk.points[walk.count - 1];
+        if (!reaches && distance(static_cast<i16>(last.x), static_cast<i16>(last.y)) >= walk.best - 8) {
+            /* As near as it gets: a plan that leads no nearer than he has
+             * been would only take him to and fro. */
+            walk.count = 0;
+            blocked(12);
+            return;
+        }
     }
     const u16 lastAnim = npc.lastAnimSet();
     const bool running = isRunning(lastAnim) || isStartingRun(lastAnim);
@@ -541,7 +596,7 @@ void walkTick()
         steps[stepCount++] = {ANIM_WALK, 32};
     }
     for (int s = 0; s < stepCount; s++) {
-        for (int i = std::min(static_cast<int>(walk.count) - 1, 5); i >= 0; i--) {
+        for (int i = std::min(static_cast<int>(walk.count) - 1, walk.next + LOOK_AHEAD); i >= walk.next; i--) {
             const ItemPoint &towards = walk.points[i];
             const u8 straight = static_cast<u8>(
                 fineDirection(static_cast<i16>(here.x), static_cast<i16>(here.y), static_cast<i16>(towards.x),
