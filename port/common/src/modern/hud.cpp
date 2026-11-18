@@ -14,6 +14,8 @@
 #include "pathwalk.h"
 #include "pfloat.h"
 #include "pointer.h"
+#include "jump.h"
+#include "shaphand.h"
 #include "screen.h"
 #include "systimer.h"
 #include "wheel.h"
@@ -165,6 +167,7 @@ void drawHud()
         return;
     }
     path();
+    drawJump();
     const float x = static_cast<float>(pointerScreenX());
     const float y = static_cast<float>(pointerScreenY());
     Npc npc(controlledActor);
@@ -218,7 +221,21 @@ void wordsPicture(u16 shape, u16 frame, i16 x, i16 y)
     icon.draw(static_cast<u16>(x - ((area.left + area.right) / 2)), static_cast<u16>(y - ((area.top + area.bottom) / 2)));
 }
 
-void wordsEnd()
+void wordsShape(u16 shape, u16 frame, bool mirrored, i16 x, i16 y)
+{
+    ShapeFrame *image = cachedShapeFrame(shape, frame);
+    if (image == nullptr) {
+        return;
+    }
+    Viewport view(VIEWPORT_LARGE, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, canvas);
+    if (mirrored) {
+        view.drawShapeMirrored(x, y, image);
+    } else {
+        view.drawShape(x, y, image);
+    }
+}
+
+void wordsEnd(u8 alpha)
 {
     const RGB *colours = gamePalette->data.get();
     for (std::size_t i = 0; i < PIXELS; i++) {
@@ -229,7 +246,7 @@ void wordsEnd()
         /* The palette's 6 bits a colour. */
         const RGB &c = colours[canvas[i]];
         picture[i] = (static_cast<std::uint32_t>(c.red) << 26) | (static_cast<std::uint32_t>(c.green) << 18) |
-                     (static_cast<std::uint32_t>(c.blue) << 10) | 0xffU;
+                     (static_cast<std::uint32_t>(c.blue) << 10) | alpha;
     }
     overlayPicture(picture, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 }

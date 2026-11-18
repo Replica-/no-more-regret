@@ -12,3 +12,6 @@ __pycache__/
 # The port's crash reports
 *-crash-*.log
 *-crash-*.dmp
+
+# A local copy of a game install (cd/README.md has the folders the port reads)
+/game/

@@ -56,8 +56,9 @@ bool pointerMotion(NewGumpEvent *event);
 bool pointerButton(u8 right, NewGumpEvent *event);
 /* The controller's key in the mode: true when the mode took it
  * (Controller::keyboardRest): the forward key walks to the pointer, the
- * other moves end a walk. */
-bool pointerKey(const KeyEvent &key, Action action);
+ * jump key aims a jump (a tap let go comes back pressed, for the original's
+ * jump), the other moves end a walk. */
+bool pointerKey(KeyEvent &key, Action action);
 /* A tick of the controller (Controller::run): the facing, the aim, the
  * fire held, the walk. */
 void pointerTick();

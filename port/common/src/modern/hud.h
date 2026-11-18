@@ -26,10 +26,13 @@ void mapToOverlay(u16 x, u16 y, i16 z, float *screenX, float *screenY);
  * pixels of its own (its fonts, gump.h's CAFont, and its gump shapes)
  * between wordsBegin and wordsEnd, which gives them to the overlay in the
  * palette's colours. A line of text ends at x (align -1), is centred on it
- * (0) or starts at it (1); a picture is centred on x,y. */
+ * (0) or starts at it (1); a picture is centred on x,y; a frame of the
+ * map's shapes has its origin at x,y, mirrored as a flipped item's. wordsEnd
+ * gives them see-through by alpha. */
 void wordsBegin();
 void wordsText(i16 font, i16 x, i16 y, const char *text, i16 align);
 [[nodiscard]] i16 wordsWidth(i16 font, const char *text);
 void wordsPicture(u16 shape, u16 frame, i16 x, i16 y);
-void wordsEnd();
+void wordsShape(u16 shape, u16 frame, bool mirrored, i16 x, i16 y);
+void wordsEnd(u8 alpha = 0xff);
 #endif

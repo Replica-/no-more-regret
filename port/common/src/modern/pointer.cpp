@@ -22,6 +22,7 @@
 #include "npc.h"
 #include "spmgr.h"
 #include "pathwalk.h"
+#include "jump.h"
 #include "systimer.h"
 #include "type.h"
 #include "world.h"
@@ -286,7 +287,7 @@ bool pointerButton(u8 right, NewGumpEvent *event)
     return true;
 }
 
-bool pointerKey(const KeyEvent &key, Action action)
+bool pointerKey(KeyEvent &key, Action action)
 {
     if (!pointerMode()) {
         return false;
@@ -295,10 +296,21 @@ bool pointerKey(const KeyEvent &key, Action action)
         walkHold(key.pressed != 0U);
         return true;
     }
+    /* The jump key held aims a jump (jump.h); a tap goes on as the
+     * original's, made as the key is let go. */
+    if (action == Action::JUMP) {
+        if (jumpKey(key.pressed != 0U, key.repeat)) {
+            return true;
+        }
+        walkStop();
+        key.pressed = 1;
+        key.repeat = 1;
+        return false;
+    }
     if (key.pressed != 0U &&
         (action == Action::MOVE_BACK || action == Action::SLIDE_LEFT || action == Action::SLIDE_RIGHT ||
          action == Action::ROLL_LEFT || action == Action::ROLL_RIGHT || action == Action::KNEEL ||
-         action == Action::JUMP || action == Action::ADVANCE || action == Action::RETREAT)) {
+         action == Action::ADVANCE || action == Action::RETREAT)) {
         walkStop();
     }
     return false;
@@ -337,6 +349,7 @@ void pointerTick()
         fireKey(true, 2);
     }
     walkTick();
+    jumpTick();
     const i16 x = pointerScreenX();
     const i16 y = pointerScreenY();
     u16 mapX;
