@@ -41,11 +41,21 @@ namespace {
 bool &pointerOn = gameSetting<bool>(false);
 
 /* The buttons' state, the arena's (a rewind takes it back with the game).
- * Whether the mode took the left button's press (its release then too);
- * the left button's last click, for the double click. A holster waits for
- * the Silencer's animation. */
+ * The right button: when it went down, whether it is down, whether its
+ * press drew the weapon (or cancelled a draw waiting: its release then
+ * leaves the weapon as it is), whether it fires (held long enough), whether
+ * its press came while the weapon was being drawn (a tap puts it away at
+ * once). Whether the mode took the left button's press (its release then
+ * too); the left button's last click, for the double click. A draw or a
+ * holster waits for the Silencer's animation. */
 struct Buttons {
+    u32 rightDownAt;
+    u8 rightDown;
+    u8 rightDrew;
+    u8 rightFiring;
+    u8 rightCancel;
     u8 leftTaken;
+    u8 pendingDraw;
     u8 pendingHolster;
     u32 lastClickAt;
     i16 lastClickX;
@@ -56,6 +66,8 @@ Buttons &buttons = gameGlobal<Buttons>();
 /* A double click's ticks and pixels apart. */
 const u32 DOUBLE_CLICK_TICKS = 16;
 const i16 DOUBLE_CLICK_PIXELS = 14;
+/* The right button held this long fires (a fifth of a second). */
+const u32 HOLD_FIRE_TICKS = 10;
 /* The pointer this close to the Silencer turns him no more. */
 const i16 FACE_DEAD_ZONE = 10;
 
@@ -114,8 +126,20 @@ bool drawing(Npc &npc)
     return npc.isBusy() && npc.lastAnimSet() == ANIM_READY_SMALL;
 }
 
+/* The weapon drawn, or as soon as the Silencer is free (he is often in the
+ * middle of a turn or a step): the draw waits instead of being lost. */
+void draw(Npc &npc)
+{
+    if (!npc.isBusy()) {
+        npc.doAnim(ANIM_READY_SMALL, DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
+    } else {
+        buttons.pendingDraw = 1;
+    }
+}
+
 void holster(Npc &npc, bool atOnce)
 {
+    buttons.pendingDraw = 0;
     if (atOnce) {
         killItemProcesses(npc.id, ANIM_TYPE, Priority(PRIORITY_EQUAL | BASE_LEVEL));
     }
@@ -126,6 +150,80 @@ void holster(Npc &npc, bool atOnce)
         npc.doAnim(ANIM_UNREADY_SMALL, DIRECTION_CURRENT, EVEN_IF_BUSY, 0);
     } else {
         buttons.pendingHolster = 1;
+    }
+}
+
+/* The fire key's press or release, as the controller takes a key bound to
+ * it: held, a press each tick (the controller passes over those that come
+ * while it fires). */
+void fireKey(bool pressed, u8 repeat)
+{
+    if (controller == nullptr) {
+        return;
+    }
+    KeyEvent key;
+    key.ascii = 0;
+    key.scan = 0;
+    key.shift = 0;
+    key.time = 0;
+    key.pressed = pressed ? 1 : 0;
+    key.extended = 0;
+    key.repeat = repeat;
+    controller->actionKey(&key, Action::FIRE);
+}
+
+void stopFire()
+{
+    buttons.rightFiring = 0;
+    fireKey(false, 1);
+    /* Stopped at once: the controller would end the burst it is in, and
+     * fire on while its timer runs. */
+    if (controller != nullptr) {
+        controller->stopFiring();
+    }
+}
+
+/* The right button's press: it ends a walk; with the weapon away it draws
+ * it (a second press while the draw waits cancels it); held, it fires
+ * (pointerTick). */
+void rightPress(Npc &npc, bool isDrawing, bool out)
+{
+    walkStop();
+    buttons.rightDown = 1;
+    buttons.rightDownAt = now();
+    buttons.rightFiring = 0;
+    buttons.rightDrew = 0;
+    buttons.rightCancel = isDrawing ? 1 : 0;
+    if (buttons.pendingDraw != 0U) {
+        buttons.pendingDraw = 0;
+        buttons.rightDrew = 1;
+        return;
+    }
+    if (!out) {
+        buttons.rightDrew = 1;
+        draw(npc);
+    }
+}
+
+/* The right button's release: a hold stops firing; a tap on the weapon
+ * out puts it away (half way through drawing it, at once). */
+void rightRelease()
+{
+    buttons.rightDown = 0;
+    const bool cancel = buttons.rightCancel != 0U;
+    buttons.rightCancel = 0;
+    if (buttons.rightFiring != 0U) {
+        stopFire();
+        return;
+    }
+    if (buttons.rightDrew != 0U || !pointerMode()) {
+        return;
+    }
+    Npc npc(controlledActor);
+    if (cancel) {
+        holster(npc, true);
+    } else if (weaponOut(npc) && !npc.isBusy()) {
+        holster(npc, false);
     }
 }
 
@@ -254,13 +352,16 @@ bool pointerMotion(NewGumpEvent * /*event*/)
 
 bool pointerButton(u8 right, NewGumpEvent *event)
 {
-    /* The right button does nothing to the Silencer: the mode takes its
-     * presses and releases, so the original's (a double click readies the
-     * weapon) never see them. */
-    if (right != 0U) {
-        return pointerSetting() && worldActive != 0U;
-    }
+    /* The mode takes the right button's presses and releases: the
+     * original's (its walk, a double click readying the weapon) never see
+     * them. */
     if (event->isMouseRelease()) {
+        if (right != 0U) {
+            if (buttons.rightDown != 0U) {
+                rightRelease();
+            }
+            return pointerSetting() && worldActive != 0U;
+        }
         const bool taken = buttons.leftTaken != 0U;
         buttons.leftTaken = 0;
         return taken;
@@ -273,6 +374,10 @@ bool pointerButton(u8 right, NewGumpEvent *event)
     Npc npc(controlledActor);
     const bool isDrawing = drawing(npc);
     const bool out = weaponOut(npc) || isDrawing;
+    if (right != 0U) {
+        rightPress(npc, isDrawing, out);
+        return true;
+    }
     buttons.leftTaken = 1;
     if (out) {
         holster(npc, isDrawing);
@@ -351,6 +456,11 @@ void pointerTick()
 {
     pointerReach(pointerSetting() && worldActive != 0U && worldFrozen == 0U);
     if (!pointerMode()) {
+        if (buttons.rightFiring != 0U) {
+            stopFire();
+        }
+        buttons.rightDown = 0;
+        buttons.pendingDraw = 0;
         buttons.pendingHolster = 0;
         walkStop();
         return;
@@ -364,6 +474,21 @@ void pointerTick()
         if (weaponOut(npc)) {
             holster(npc, false);
         }
+    }
+    if (buttons.pendingDraw != 0U && !npc.isBusy()) {
+        buttons.pendingDraw = 0;
+        if (!weaponOut(npc)) {
+            npc.doAnim(ANIM_READY_SMALL, DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
+        }
+    }
+    /* The right button held a fifth of a second fires until let go, from
+     * as soon as the weapon is out. */
+    if (buttons.rightDown != 0U && buttons.rightFiring == 0U && now() - buttons.rightDownAt >= HOLD_FIRE_TICKS &&
+        weaponOut(npc) && !drawing(npc)) {
+        buttons.rightFiring = 1;
+        fireKey(true, 1);
+    } else if (buttons.rightFiring != 0U) {
+        fireKey(true, 2);
     }
     walkTick();
     jumpTick();
@@ -390,7 +515,7 @@ void pointerTick()
         if (!walking() && !npc.isBusy() && toward != npc.direction()) {
             turnTowards(npc, toward);
         }
-    } else if (!walking() && !npc.isBusy() && toward != npc.direction()) {
+    } else if (!walking() && !npc.isBusy() && buttons.pendingDraw == 0U && toward != npc.direction()) {
         turnTowards(npc, toward);
     }
 }
