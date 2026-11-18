@@ -195,6 +195,9 @@ bool canPickUp(u16 item);
 void unknown1172();
 /* UNCALLED: nothing calls it. */
 void unknown118e();
+/* The load gump over the world, as the load key opens it (the port's
+ * death screen, modern/death.h). */
+void openLoadGame();
 /* A key that uses the controlled NPC's first item of shape
  * (WorldGump::handleKeyboard, ITEM_KEYS): a charged one loses a charge each
  * time and goes at the last. */

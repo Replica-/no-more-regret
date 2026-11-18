@@ -2500,3 +2500,8 @@ void WorldGump::keyboardRest(NewGumpEvent *event, u8 canAct, Action action)
         cheatKey(event->argument);
     }
 }
+
+void openLoadGame()
+{
+    openLoad();
+}

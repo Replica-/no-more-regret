@@ -19,6 +19,7 @@
 #include "blood.h"
 #include "lighting.h"
 #include "colours.h"
+#include "death.h"
 #include "shaphand.h"
 #include "screen.h"
 #include "systimer.h"
@@ -161,7 +162,7 @@ void drawHud()
     if (worldActive != 0U) {
         noteSeen();
     }
-    if (drawWheel() || drawMissionMap() || drawColours()) {
+    if (drawWheel() || drawMissionMap() || drawColours() || drawDeath()) {
         return;
     }
     drawLighting();

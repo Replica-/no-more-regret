@@ -7,6 +7,7 @@
 #include "gamestate.h"
 #include "control.h"
 #include "pointer.h"
+#include "death.h"
 #include "control_game.h"
 #include "animcach.h"
 #include "animprim.h"
@@ -627,6 +628,8 @@ void Controller::run()
     if ((reticleShown != 0U) && (reticleMoved != 0U)) {
         placeReticle();
     }
+    /* The port's end of the Silencer's death (death.h). */
+    deathTick();
     /* The port's pointer mode (pointer.h). */
     pointerTick();
 }

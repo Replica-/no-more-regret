@@ -8,6 +8,7 @@
 #include "crusader.h"
 #include "hud.h"
 #include "blood.h"
+#include "death.h"
 #include "pointer.h"
 #include "crusader_game.h"
 #include "animcach.h"
@@ -934,6 +935,8 @@ void beginDeath(Item *item, Npc &npc, u16 type)
     if (item->isControlled()) {
         setTarget(0);
         if (item->isSilencer()) {
+            /* The port's death screen (death.h). */
+            noteSilencerKilled();
             if (type != FIRE_BK_16 && type != 18) {
                 new DeathSilence;
             }
