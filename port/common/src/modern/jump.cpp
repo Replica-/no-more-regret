@@ -7,6 +7,7 @@
 #include "astream.h"
 #include "camera.h"
 #include "collide.h"
+#include "crusys.h"
 #include "control.h"
 #include "gravity.h"
 #include "hud.h"
@@ -287,6 +288,11 @@ bool jumpKey(bool pressed, u16 repeat)
 
 void drawJump()
 {
+    /* A screen over the world takes the key's release: the hold is over. */
+    if (worldActive == 0U) {
+        held.down = 0;
+        return;
+    }
     if (!targeted() || !mayJump()) {
         return;
     }
