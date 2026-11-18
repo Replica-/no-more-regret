@@ -4,7 +4,7 @@
  * drawn he aims exactly at it (the reticle follows it, no target is chosen
  * for him). The left button puts the weapon away and walks to the point
  * clicked (a double click runs) or up to the item clicked and uses or takes
- * it; the right button draws the weapon and fires while it is held. He
+ * it; the right button does nothing. He
  * turns to the pointer a quarter turn at a step at most. The pointer stays
  * the player's in the world when the Silencer is not (a scripted moment):
  * it moves, and the mouse's buttons do nothing. The forward key
