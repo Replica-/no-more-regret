@@ -271,6 +271,16 @@ i16 pointerScreenY()
     return mouseCtl != nullptr ? static_cast<i16>(mouseCtl->pointerY - reach.top) : 0;
 }
 
+bool pointerEventPlace(s16 *x, s16 *y)
+{
+    if (reach.width == 0) {
+        return false;
+    }
+    *x = static_cast<s16>(*x - reach.left);
+    *y = static_cast<s16>(*y - reach.top);
+    return *x < 0 || *y < 0 || *x >= SCREEN_WIDTH || *y >= SCREEN_HEIGHT;
+}
+
 void pointerReach(bool frame)
 {
     if (mouseCtl == nullptr) {

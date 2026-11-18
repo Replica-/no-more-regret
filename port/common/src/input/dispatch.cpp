@@ -14,6 +14,7 @@
 #include "clock.h"
 #include "host.h"
 #include "waits.h"
+#include "pointer.h"
 
 #include <memory>
 
@@ -323,8 +324,13 @@ void GumpDispatcher::post(NewGumpEvent *event)
 
 void GumpDispatcher::translate(const MouseRecord &record, NewGumpEvent *event)
 {
-    event->x = record.x;
+    event->x = static_cast<s16>(record.x);
     event->y = record.y;
+    /* The port's pointer over the wide frame (pointer.h): its place on the
+     * screen; off it, the world's gump alone on the screen takes it. */
+    if (pointerEventPlace(&event->x, &event->y) && modalTop == 0) {
+        event->target = modals[0];
+    }
     switch (record.action) {
     case MOUSE_MOVED:
         event->kind = EVENT_MOTION;

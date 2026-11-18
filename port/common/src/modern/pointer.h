@@ -34,6 +34,11 @@ void setPointerSetting(bool on);
  * world (pointerTick), else the screen's (freezeWorld: a screen over the
  * world has the game's pointer), the pointer kept where it is. */
 void pointerReach(bool frame);
+/* A mouse event's place (GumpDispatcher::translate): the driver's is the
+ * frame's while the mode's reach is (pointerReach), made the screen's that
+ * the gumps are hit in; true when it is off the screen, in the frame's
+ * sides, where only the world's gump is. */
+bool pointerEventPlace(s16 *x, s16 *y);
 
 /* The item under screen point x,y that the Silencer can use or take (the
  * selection's: G, S), 0 for none; whether it is in his reach, as the
