@@ -4,6 +4,7 @@
 #include "gamememory.h"
 #include "host.h"
 #include "input.h"
+#include "splash.h"
 
 #include <cstdlib>
 
@@ -137,3 +138,6 @@ bool windowRewindFrame()
 }
 
 void windowRewindEnd(const KeysHeld & /*unused*/) {}
+
+/* No window to choose the game in (splash.h): the run goes on. */
+void chooseGameFirst(int /*argc*/, char * /*argv*/[]) {}

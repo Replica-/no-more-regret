@@ -8,6 +8,7 @@
 #include "gamefolder.h"
 #include "profile.h"
 #include "rewind.h"
+#include "splash.h"
 #include "window.h"
 
 namespace {
@@ -25,6 +26,8 @@ int main(int argc, char *argv[])
     if (portVersionAsked(argc, argv)) {
         return 0;
     }
+    /* The game chosen in a window first, when nothing chose it (splash.h). */
+    chooseGameFirst(argc, argv);
     /* Into the folder the game's data are in (a GOG install the program was
      * copied into), drive C, where the crash reports go too. */
     enterGameFolder();
