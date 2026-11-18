@@ -45,6 +45,7 @@
 #include "wpncache.h"
 #include "sounds.h"
 #include "shapes.h"
+#include "effects.h"
 
 namespace {
 /* Nothing reads it. */
@@ -730,6 +731,8 @@ u16 fireWeapon(Item *item, i16 x, i16 y, i16 z, char direction, i16 type, u8 aim
     if (item->isControlled() && (reticleShown == 0U)) {
         showReticle();
     }
+    /* The port's muzzle flash (effects.h). */
+    effectsShot(start.x, start.y, start.z);
     for (i = 0; i < shots; i++) {
         shot = new SuperSprite;
         if (frame == 0) {

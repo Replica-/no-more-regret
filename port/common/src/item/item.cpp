@@ -43,6 +43,7 @@
 #include "dlitem.h"
 #include "random.h"
 #include "shapes.h"
+#include "effects.h"
 
 namespace {
 /* The 16-unit step of each of the 8 directions (step). */
@@ -799,6 +800,10 @@ u16 Item::enterFastArea()
  * shape's crate bit, No Remorse's knows the crates' shapes). */
 void Item::destroy()
 {
+    /* The port's flames that burn on (effects.h). */
+    if (id != 0) {
+        effectsGone(id);
+    }
     if ((snapProcess != nullptr) && itemShape[id] == SNAP_EGG) {
         snapProcess->removeEgg(id);
     }

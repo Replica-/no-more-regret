@@ -72,7 +72,7 @@ GROUPS = {
     'system': 'system halt random utility common diskfree hyperdsk cprotmem desc linklist pfloat huge profile',
     # The port's own enhancements (No More Regret's fork): the keyboard and
     # mouse controls and what they draw.
-    'modern': 'pointer pathwalk hud wheel missionmap jump codes popups blood lighting colours death loot enhancements imported',
+    'modern': 'pointer pathwalk hud wheel missionmap jump codes popups blood lighting colours death loot enhancements imported effects',
 }
 GROUP = {module: group for group, modules in GROUPS.items() for module in modules.split()}
 # The include path's directories besides the trees (CMakeLists.txt's).
