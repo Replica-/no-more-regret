@@ -17,6 +17,8 @@
 #include "spmgr.h"
 #include "systimer.h"
 #include "type.h"
+#include "viewport.h"
+#include "widesides.h"
 
 #include <algorithm>
 #include <cmath>
@@ -79,7 +81,35 @@ u8 covered[MOST_SIDE * MOST_SIDE];
 u32 rows[MOST_SIDE];
 std::uint32_t picture[MOST_SIDE * MOST_SIDE];
 
-bool makePicture(const u8 *frame, bool mirrored, int *width, int *height)
+/* Whether the game's frame shows colour at screen pixel x,y: the screen's
+ * (screenViewport) or the wide screen's sides'. What stands in front of an
+ * effect (the Silencer before a fire) has drawn over it there. */
+bool frameShows(int x, int y, u8 colour)
+{
+    if (x >= 0 && y >= 0 && x < SCREEN_WIDTH && y < SCREEN_HEIGHT) {
+        if (screenViewport == nullptr) {
+            return true;
+        }
+        const ViewportPixels screen = screenViewport->pixels();
+        if (x < screen.left || x > screen.right || y < screen.top || y > screen.bottom) {
+            return true;
+        }
+        return screen.pixels[screen.rows[y] + static_cast<u32>(x)] == colour;
+    }
+    int width = 0;
+    int height = 0;
+    const u8 *sides = wideSidesPixels(&width, &height);
+    const int column = x + ((width - SCREEN_WIDTH) / 2);
+    const int row = y + ((height - SCREEN_HEIGHT) / 2);
+    if (sides == nullptr || column < 0 || row < 0 || column >= width || row >= height) {
+        return true;
+    }
+    return sides[(row * width) + column] == colour;
+}
+
+/* The picture of frame with its top left corner at screen pixel left,top;
+ * hidden, its pixels the game's frame does not show (in front of it). */
+bool makePicture(const u8 *frame, bool mirrored, int left, int top, bool hidden, int *width, int *height)
 {
     const s32 w = drawframe::dword(frame + 4);
     const s32 h = drawframe::dword(frame + 8);
@@ -105,7 +135,7 @@ bool makePicture(const u8 *frame, bool mirrored, int *width, int *height)
     }
     const RGB *colours = gamePalette->data.get();
     for (int i = 0; i < w * h; i++) {
-        if (covered[i] == 0U) {
+        if (covered[i] == 0U || (hidden && !frameShows(left + (i % w), top + (i / w), indexes[i]))) {
             picture[i] = 0;
             continue;
         }
@@ -129,14 +159,19 @@ void drawEffect(u16 shape, u16 frameNumber, float x, float y, bool mirrored, boo
         return;
     }
     const auto *frame = reinterpret_cast<const u8 *>(image);
-    int w = 0;
-    int h = 0;
-    if (!makePicture(frame, mirrored, &w, &h)) {
-        return;
-    }
-    const s32 originX = mirrored ? w - 1 - drawframe::dword(frame + 0xc) : drawframe::dword(frame + 0xc);
+    const s32 originX = mirrored ? drawframe::dword(frame + 4) - 1 - drawframe::dword(frame + 0xc)
+                                 : drawframe::dword(frame + 0xc);
     const float left = x - static_cast<float>(originX);
     const float top = y - static_cast<float>(drawframe::dword(frame + 0x10));
+    /* Only where the game's frame shows it: what is in front hides it, the
+     * glows too. The translucent ones, which the game blends with what is
+     * under them, are light and go over all. */
+    int w = 0;
+    int h = 0;
+    if (!makePicture(frame, mirrored, static_cast<int>(left + 0.5F), static_cast<int>(top + 0.5F),
+                     !translucent, &w, &h)) {
+        return;
+    }
     const float fw = static_cast<float>(w);
     const float fh = static_cast<float>(h);
     const float cx = left + (fw / 2);
