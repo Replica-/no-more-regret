@@ -9,6 +9,7 @@
 #include "language.h"
 #include "pointer.h"
 #include "lighting.h"
+#include "colours.h"
 #include "hud.h"
 #include "profile.h"
 #include "screen.h"
@@ -16,6 +17,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <tuple>
 
 namespace {
@@ -73,6 +75,8 @@ std::string enhancedText()
         text += "debug_feature=true\r\n";
     }
     text += std::string("pointer=") + (pointerSetting() ? "1" : "0") + "\r\n";
+    text += std::string("lighting=") + (lightingSetting() ? "1" : "0") + "\r\n";
+    text += "colours=" + std::to_string(coloursSetting()) + "\r\n";
     return text + bindingsText();
 }
 
@@ -142,6 +146,11 @@ std::vector<std::string> readEnhancedText(const std::string &text)
         if (key == "lighting") {
             /* The lighting (lighting.h): 0 the art as it is; another on. */
             setLightingSetting(trimmed(line.substr(equals + 1)) != "0");
+            continue;
+        }
+        if (key == "colours") {
+            /* The Silencer's look (colours.h): its number, 0 the game's. */
+            setColoursSetting(static_cast<u8>(std::atoi(trimmed(line.substr(equals + 1)).c_str())));
             continue;
         }
         if (key == "debug_feature") {

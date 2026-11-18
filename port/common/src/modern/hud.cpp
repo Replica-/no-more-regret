@@ -18,6 +18,7 @@
 #include "popups.h"
 #include "blood.h"
 #include "lighting.h"
+#include "colours.h"
 #include "shaphand.h"
 #include "screen.h"
 #include "systimer.h"
@@ -160,7 +161,7 @@ void drawHud()
     if (worldActive != 0U) {
         noteSeen();
     }
-    if (drawWheel() || drawMissionMap()) {
+    if (drawWheel() || drawMissionMap() || drawColours()) {
         return;
     }
     drawLighting();

@@ -1,6 +1,7 @@
 /* DLITEM.C (Code55): the items in the display list. See dlitem.h. */
 #include "dlitem.h"
 #include "blood.h"
+#include "colours.h"
 #include "gamestate.h"
 #include "animprim.h"
 #include "basecam.h"
@@ -121,7 +122,10 @@ void DL_ItemNode::draw()
                                                       paletteTables->translucent.get());
             } else if (info->translucent) {
                 drawView.drawShapeMirroredRemapped(screenX - scrollX, screenY - scrollY, image, paletteTables->remap);
-            } else {
+            } else if (!nodeItem.isSilencer() ||
+                       !drawInColours(drawView, static_cast<i16>(screenX - scrollX),
+                                      static_cast<i16>(screenY - scrollY), image, true)) {
+                /* The port's: the Silencer in his colours (colours.h). */
                 drawView.drawShapeMirrored(screenX - scrollX, screenY - scrollY, image);
             }
         } else if ((nodeFlags & ITEM_INVISIBLE) != 0) {
@@ -129,7 +133,9 @@ void DL_ItemNode::draw()
                                           paletteTables->translucent.get());
         } else if (info->translucent) {
             drawView.drawShapeRemapped(screenX - scrollX, screenY - scrollY, image, paletteTables->remap);
-        } else {
+        } else if (!nodeItem.isSilencer() ||
+                   !drawInColours(drawView, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY),
+                                  image, false)) {
             drawView.drawShape(screenX - scrollX, screenY - scrollY, image);
         }
     }

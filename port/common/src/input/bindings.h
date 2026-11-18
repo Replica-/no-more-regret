@@ -162,6 +162,8 @@ enum class Action : u8 {
     ITEM_WHEEL,
     /* The port's mission map (modern/missionmap.h). */
     MISSION_MAP,
+    /* The port's choice of the Silencer's colours (modern/colours.h). */
+    CHARACTER_COLOURS,
     /* The keys of the world's gump while it selects items
      * (WorldGump::handleKeyboard, selectItems). */
     SELECTION_PREVIOUS,

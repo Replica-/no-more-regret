@@ -10,6 +10,7 @@
 #include "pointer.h"
 #include "wheel.h"
 #include "missionmap.h"
+#include "colours.h"
 #include "popups.h"
 #include "widesides.h"
 #include "waits.h"
@@ -2480,6 +2481,11 @@ void WorldGump::keyboardRest(NewGumpEvent *event, u8 canAct, Action action)
     case Action::MISSION_MAP:
         if (controllingOwn(canAct)) {
             openMissionMap();
+        }
+        break;
+    case Action::CHARACTER_COLOURS:
+        if (controllingOwn(canAct)) {
+            openColours();
         }
         break;
     case Action::DROP_WEAPON:
