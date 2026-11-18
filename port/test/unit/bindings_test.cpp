@@ -707,12 +707,12 @@ void soundDepthText()
     chooseSoundBits(0);
 }
 
-/* enhanced.cfg's widescreen=: 1 and 2 read and written, another off, no
- * line when off. */
+/* enhanced.cfg's widescreen=: 1 and 2 read and written, another off, off
+ * written too (the port's default is on). */
 void wideScreenText()
 {
     screenSetWide(0);
-    check(enhancedText().find("widescreen=") == std::string::npos, "the wide screen off: no line");
+    check(enhancedText().find("\r\nwidescreen=0\r\n") != std::string::npos, "the wide screen off: written");
     check(readEnhancedText("widescreen = 2\r\n").empty() && screenWide() == 2, "widescreen=2 read");
     const std::string text = enhancedText();
     check(text.find("\r\nwidescreen=2\r\n") != std::string::npos, "widescreen=2 written");

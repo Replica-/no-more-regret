@@ -63,6 +63,21 @@ void targetCursor(float x, float y)
     }
 }
 
+/* The mouse's place with the weapon put away (the game hides its own
+ * pointer over the world): an arrow, its point at x,y. */
+void arrowCursor(float x, float y)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        const std::uint32_t colour = pass == 0 ? SHADOW : WHITE;
+        const float width = pass == 0 ? 2.5F : 1.2F;
+        overlayLine(x, y, x, y + 14, width, colour);
+        overlayLine(x, y, x + 10, y + 10, width, colour);
+        overlayLine(x, y + 14, x + 4, y + 10, width, colour);
+        overlayLine(x + 4, y + 10, x + 10, y + 10, width, colour);
+        overlayLine(x + 4, y + 10, x + 7, y + 17, width, colour);
+    }
+}
+
 /* Where the next shot goes (pointer.h's PointerAim): four red lines round
  * the point aimed at, as far apart as the shots scatter there (a map spread
  * s is s across the screen and s/2 down, the rise above it), and a laser
@@ -184,6 +199,7 @@ void drawHud()
         targetCursor(x, y);
         return;
     }
+    arrowCursor(x, y);
     const u16 item = pointerItemUnder(pointerScreenX(), pointerScreenY());
     if (item != 0U) {
         overlayDisc(x + 9, y + 9, 3.5F, SHADOW);

@@ -65,9 +65,8 @@ std::string enhancedText()
     if (hostFullscreen()) {
         text += "fullscreen=1\r\n";
     }
-    if (screenWide() != 0U) {
-        text += "widescreen=" + std::to_string(screenWide()) + "\r\n";
-    }
+    /* Always: on by default, so off is kept too. */
+    text += "widescreen=" + std::to_string(screenWide()) + "\r\n";
     /* Always: a recording keeps the speed it ran at, whatever the default
      * becomes. */
     text += std::string("game_speed=") + clockMachineSpeedName(clockMachineSpeed()) + "\r\n";
@@ -180,8 +179,9 @@ void readEnhancedOptions()
     /* What the port's enhancements draw (hud.h). */
     startHud();
     /* The port's controls by default: the keyboard and mouse controls
-     * (pointer.h), the modern keys and the lighting (lighting.h), which
-     * enhanced.cfg's pointer=, keys= and lighting= change; the tests'
+     * (pointer.h), the modern keys, the lighting (lighting.h) and the wide
+     * screen, which enhanced.cfg's pointer=, keys=, lighting= and
+     * widescreen= change; the tests'
      * REGRET_ORIGINAL_CONTROLS keeps the original's, the controls and the
      * screens their results came from. */
     const bool original = hostEnvironment("REGRET_ORIGINAL_CONTROLS") != nullptr;
@@ -189,6 +189,8 @@ void readEnhancedOptions()
     /* The lighting too: the tests' screens are the art's own. */
     setLightingSetting(!original);
     setKeyPreset(original ? KeyPreset::ORIGINAL : KeyPreset::MODERN);
+    /* The wide screen too: the world beside the 640x480 screen. */
+    screenSetWide(original ? 0 : 1);
     /* The window's own changes of the full screen (its key) kept. */
     hostFullscreenAction(writeEnhancedOptions);
     if (fileExists(ENHANCED_FILE) == 0) {
