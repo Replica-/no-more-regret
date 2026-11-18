@@ -1530,6 +1530,12 @@ MoveStart roll(Npc &npc, const MoveKey &m, char &toward)
     case Action::ROLL_FORWARD:
         if (MOVE_NO_REGRET) {
             start.anim = ANIM_ROLL_FORWARD;
+        } else if (pointerSetting()) {
+            /* The port's keyboard and mouse controls: No Remorse has no
+             * forward roll (anim.dat), so his roll to the left, turned a
+             * quarter right, takes him ahead (as sideStep's rolls). */
+            toward = static_cast<char>((m.facing + 4) & 0xf);
+            start.anim = (npc.isKneeling() != 0U) ? ANIM_COMBAT_ROLL_LEFT : ANIM_KNEEL_ROLL_LEFT;
         } else if (npc.isKneeling() != 0U) {
             start.anim = ANIM_KNEEL_END;
         } else if (m.standing) {
