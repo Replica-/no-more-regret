@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "shaphand.h"
+#include "imported.h"
 #include "cache.h"
 #include "cache_game.h"
 #include "clock.h"
@@ -48,6 +49,10 @@ void initShapeCache()
 
 ShapeFrame *cachedShapeFrame(u16 shape, u16 frame)
 {
+    /* The port's frames of No Regret's in No Remorse (imported.h). */
+    if (ShapeFrame *image = importedFrame(shape, frame)) {
+        return image;
+    }
     if (SHAPES_FROM_SWAP) {
         return static_cast<ShapeHandler *>(shapeCache)->getFrame(shape, frame);
     }
@@ -505,6 +510,7 @@ void closeShapeFiles()
     shapeFlex = nullptr;
     delete frameCache;
     frameCache = nullptr;
+    releaseImported();
 }
 
 /* Copies the shapes the game keeps from the swap file into a new shape file,

@@ -42,7 +42,7 @@ inline constexpr bool ROLLING_THUNDER = false;
  * controlled NPC dodge, else it keeps the reticle; the kneeling moves give
  * the reticle back; the combat runs make the controlled NPC dodge; the NPCs
  * besides the controlled one whose animations take the reticle. */
-inline constexpr std::array<i16, 11> KNEELING_ANIMS = {ANIM_KNEEL_START,
+inline constexpr std::array<i16, 12> KNEELING_ANIMS = {ANIM_KNEEL_START,
                                                        ANIM_KNEELING_SMALL,
                                                        ANIM_KNEELING_LARGE,
                                                        ANIM_KNEEL_FIRE_SMALL,
@@ -52,6 +52,10 @@ inline constexpr std::array<i16, 11> KNEELING_ANIMS = {ANIM_KNEEL_START,
                                                        ANIM_KNEEL_ROLL_LEFT,
                                                        ANIM_KNEEL_ROLL_RIGHT,
                                                        ANIM_BRIGHT_KNEEL_FIRE,
+                                                       /* The port's: No Regret's forward
+                                                        * roll, imported (imported.h), ends
+                                                        * kneeling; the original never plays it. */
+                                                       ANIM_ROLL_FORWARD,
                                                        -1};
 inline constexpr bool ANIM_16_AND_SLIDE_RIGHT = false;
 inline constexpr bool ROLL_FORWARD_DODGES = false;

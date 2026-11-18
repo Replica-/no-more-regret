@@ -4,6 +4,7 @@
  * from wpnovlay.dat for the weapon's overlay type. The weapons' types and
  * the archive's kind are the game's (wpncache_game.h, wpncache_game.cpp). */
 #include "wpncache.h"
+#include "imported.h"
 #include "gamestate.h"
 #include "animcach.h"
 #include "gamefile.h"
@@ -158,6 +159,11 @@ bool hasWeaponOverlay(u16 weapon, u16 animation)
 {
     if (loadedWeapon != weapon) {
         loadOverlays(weapon);
+    }
+    /* The port's animation of No Regret's in No Remorse (imported.h): No
+     * Remorse's overlays are not made for its frames. */
+    if (importedAnim(1, animation)) {
+        return false;
     }
     return overlays[animation] != nullptr;
 }

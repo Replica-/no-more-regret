@@ -1,5 +1,6 @@
 /* ANIMCACH.C (Code50, 1188): the cache of the shapes' animations. */
 #include "gamestate.h"
+#include "imported.h"
 #include "animcach.h"
 #include "distance.h"
 #include "filespec.h"
@@ -120,6 +121,8 @@ i16 loadShape(u16 shape)
             animCache[slot].setAction(anim, nullptr);
         }
     }
+    /* The port's animation of No Regret's in No Remorse (imported.h). */
+    importAnims(shape, &animCache[slot]);
     cachedShapes[slot] = shape;
     delete table;
     return slot;

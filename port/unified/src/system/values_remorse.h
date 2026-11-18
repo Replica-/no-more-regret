@@ -245,7 +245,7 @@ inline constexpr u16 KEPT_WEAPON = SHAPE_BA_40;
 inline constexpr int KERNEL_ITEMS = 0x2400;
 inline constexpr int KEY_QUEUE = 32;
 inline constexpr int KEY_QUEUE_CAPACITY = KEY_QUEUE;
-inline constexpr std::array<i16, 11> KNEELING_ANIMS = {ANIM_KNEEL_START,
+inline constexpr std::array<i16, 12> KNEELING_ANIMS = {ANIM_KNEEL_START,
                                                        ANIM_KNEELING_SMALL,
                                                        ANIM_KNEELING_LARGE,
                                                        ANIM_KNEEL_FIRE_SMALL,
@@ -255,6 +255,7 @@ inline constexpr std::array<i16, 11> KNEELING_ANIMS = {ANIM_KNEEL_START,
                                                        ANIM_KNEEL_ROLL_LEFT,
                                                        ANIM_KNEEL_ROLL_RIGHT,
                                                        ANIM_BRIGHT_KNEEL_FIRE,
+                                                       ANIM_ROLL_FORWARD,
                                                        -1};
 inline constexpr bool KNEELING_MOVES_HAND_BACK = false;
 inline constexpr int LAST_SOUND = 512;
