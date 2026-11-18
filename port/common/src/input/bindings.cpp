@@ -1206,6 +1206,29 @@ std::string lowered(std::string text)
 
 }
 
+namespace {
+
+/* Inputs without the mouse's right button, alone or twice. */
+std::string withoutRightButton(const std::string &inputs)
+{
+    std::string kept;
+    std::size_t start = 0;
+    while (start <= inputs.size()) {
+        std::size_t end = inputs.find(' ', start);
+        if (end == std::string::npos) {
+            end = inputs.size();
+        }
+        const std::string input = inputs.substr(start, end - start);
+        if (!input.empty() && input != "mouse_right" && input != "mouse_right_double") {
+            kept += (kept.empty() ? "" : " ") + input;
+        }
+        start = end + 1;
+    }
+    return kept;
+}
+
+}
+
 std::vector<std::string> readBindingsText(const std::string &text)
 {
     std::vector<std::string> unread;
@@ -1237,7 +1260,14 @@ std::vector<std::string> readBindingsText(const std::string &text)
                 unread.push_back(line);
             }
         } else if (key.starts_with("bind_")) {
-            if (!bindAction(actionNamed(key.c_str() + 5), value.c_str())) {
+            /* The modern keys leave the right button to the pointer's
+             * weapon (pointer.h): a binding to it kept from before is
+             * dropped. */
+            std::string inputs = value;
+            if (keyPreset() == KeyPreset::MODERN) {
+                inputs = withoutRightButton(value);
+            }
+            if (!bindAction(actionNamed(key.c_str() + 5), inputs.c_str())) {
                 unread.push_back(line);
             }
         }

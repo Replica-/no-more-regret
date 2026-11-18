@@ -81,7 +81,8 @@ def modern(game):
             The left button held while the mouse moves right: he fires and
             turns (moved).
         ready weapon
-            The right button: he readies or lowers the weapon (acted).
+            R: he readies or lowers the weapon (acted; the right button is
+            the pointer's weapon in the modern keys, bound to nothing).
         wheel
             The wheel down three times and up once: the next weapons and
             the one before. No record shows it.
@@ -139,7 +140,7 @@ def modern(game):
     test('weapon 1', None, lambda: keys(['1'], 4))
     test('fire', 'acted', lambda: mouse([(0, 0)] * 30, MOUSE_LEFT))
     test('fire turning', 'moved', lambda: mouse([(6, 0)] * 20, MOUSE_LEFT))
-    test('ready weapon', 'acted', lambda: mouse([(0, 0)] * 10, MOUSE_RIGHT))
+    test('ready weapon', 'acted', lambda: keys(['r'], 4))
 
     def wheel():
         nonlocal frame

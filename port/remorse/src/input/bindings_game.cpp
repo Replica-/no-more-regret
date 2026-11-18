@@ -119,7 +119,7 @@ const ActionDefault GAME_MODERN_BINDINGS[] = {
     {Action::KNEEL, "kp5 c pad_down"},
     {Action::FIRE, "kp0 mouse_left mouse_left_double pad_rt"},
     {Action::JUMP, "j space pad_a"},
-    {Action::READY_WEAPON, "r mouse_right mouse_right_double pad_y"},
+    {Action::READY_WEAPON, "r pad_y"},
     {Action::SELECT_ITEMS, "n N"},
     {Action::GRAB_ITEMS, "f F"},
     {Action::WEAPON_WHEEL, "tab"},
