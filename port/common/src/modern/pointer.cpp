@@ -61,9 +61,7 @@ struct Buttons {
 };
 Buttons &buttons = gameGlobal<Buttons>();
 
-/* Ticks the right button is held before it fires; a double click's ticks
- * and pixels apart. */
-const u32 FIRE_HOLD = 10;
+/* A double click's ticks and pixels apart. */
 const u32 DOUBLE_CLICK_TICKS = 16;
 const i16 DOUBLE_CLICK_PIXELS = 14;
 /* The pointer this close to the Silencer turns him no more. */
@@ -79,6 +77,34 @@ struct Reach {
     i16 height;
 };
 Reach &reach = gameGlobal<Reach>(Reach{});
+
+/* The most a turn to the pointer takes at a step: a quarter of the 16
+ * directions. */
+const int TURN_STEP = 4;
+
+/* The stand of his stance, which a turn is made of (turnFrom's). */
+u16 standAnim(Npc &npc)
+{
+    if (npc.isKneeling() != 0U) {
+        return ANIM_KNEELING_SMALL;
+    }
+    if (npc.isInCombat() != 0U) {
+        const Item gun(npc.activeWeapon());
+        return gun.isValid() && smallWeapon(gun.shape()) == 0U ? ANIM_COMBAT_STAND_LARGE : ANIM_COMBAT_STAND_SMALL;
+    }
+    return ANIM_STAND;
+}
+
+/* A turn towards the pointer, the short way round, as far as TURN_STEP at
+ * once: his stand in the new direction, not the game's turn of a step at a
+ * time (turnFrom), which lags behind the mouse. */
+void turnTowards(Npc &npc, char toward)
+{
+    const int difference = ((toward - npc.direction()) + 16) % 16;
+    const int step = difference <= 8 ? std::min(difference, TURN_STEP) : -std::min(16 - difference, TURN_STEP);
+    const auto next = static_cast<u8>((npc.direction() + step) & 0xf);
+    npc.doAnim(standAnim(npc), next, ONLY_IF_IDLE, 0);
+}
 
 u32 now()
 {
@@ -258,8 +284,9 @@ void pointerUse(u16 item)
 
 bool pointerMotion(NewGumpEvent * /*event*/)
 {
-    /* The pointer goes where the mouse takes it: nothing steers. */
-    return pointerMode();
+    /* The pointer goes where the mouse takes it, whoever has the Silencer
+     * (a scripted moment too): nothing steers. */
+    return pointerSetting() && worldActive != 0U;
 }
 
 bool pointerButton(u8 right, NewGumpEvent *event)
@@ -275,24 +302,21 @@ bool pointerButton(u8 right, NewGumpEvent *event)
             return false;
         }
         buttons.rightDown = 0;
-        Npc npc(controlledActor);
         if (buttons.rightFiring != 0U) {
             buttons.rightFiring = 0;
             fireKey(false, 1);
-        } else if (pointerMode() && buttons.rightDrew == 0U && (weaponOut(npc) || buttons.rightCancel != 0U)) {
-            /* A tap with the weapon out puts it away; half way through
-             * the draw, at once. */
-            holster(npc, buttons.rightCancel != 0U);
+            /* Stopped at once: the controller would end the burst it is
+             * in, and fire on while its timer runs. */
+            if (controller != nullptr) {
+                controller->stopFiring();
+            }
         }
-        buttons.rightCancel = 0;
         return true;
     }
-    if (!pointerMode() || event->isMouseRepeat()) {
-        /* The double click's second press comes as a repeat: a click of its
-         * own here. */
-        if (!pointerMode()) {
-            return false;
-        }
+    if (!pointerMode()) {
+        /* The Silencer not the player's (a scripted moment): the mouse's
+         * press does nothing, as the pointer is the player's still. */
+        return pointerSetting() && worldActive != 0U;
     }
     Npc npc(controlledActor);
     const bool isDrawing = drawing(npc);
@@ -322,19 +346,14 @@ bool pointerButton(u8 right, NewGumpEvent *event)
         }
         return true;
     }
+    /* The right button draws the weapon and fires as long as it is held,
+     * from as soon as it is out (pointerTick). */
     walkStop();
     buttons.rightDown = 1;
-    buttons.rightDrew = 0;
     buttons.rightFiring = 0;
-    buttons.rightCancel = isDrawing ? 1 : 0;
     buttons.rightDownAt = now();
-    if (buttons.pendingDraw != 0U) {
-        /* A draw still waiting: the second press calls it off. */
-        buttons.pendingDraw = 0;
-        buttons.rightDrew = 1;
-    } else if (!out) {
-        buttons.rightDrew = 1;
-        buttons.pendingHolster = 0;
+    buttons.pendingHolster = 0;
+    if (!out && buttons.pendingDraw == 0U) {
         draw(npc);
     }
     return true;
@@ -391,7 +410,7 @@ bool pointerAimPoint(ItemPoint *point)
 
 void pointerTick()
 {
-    pointerReach(pointerMode() && worldFrozen == 0U);
+    pointerReach(pointerSetting() && worldActive != 0U && worldFrozen == 0U);
     if (!pointerMode()) {
         buttons.rightDown = 0;
         buttons.rightFiring = 0;
@@ -416,7 +435,7 @@ void pointerTick()
             npc.doAnim(ANIM_READY_SMALL, DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
         }
     }
-    if (buttons.rightDown != 0U && buttons.rightFiring == 0U && now() - buttons.rightDownAt >= FIRE_HOLD) {
+    if (buttons.rightDown != 0U && buttons.rightFiring == 0U && weaponOut(npc) && !drawing(npc)) {
         buttons.rightFiring = 1;
         fireKey(true, 1);
     } else if (buttons.rightFiring != 0U) {
@@ -445,11 +464,10 @@ void pointerTick()
             sprites[reticleSprite].flags |= SPRITE_UNSEEN;
         }
         if (!walking() && !npc.isBusy() && toward != npc.direction()) {
-            npc.doAnim(npc.isKneeling() != 0U ? ANIM_KNEELING_SMALL : ANIM_COMBAT_STAND_SMALL, static_cast<u8>(toward),
-                       ONLY_IF_IDLE, 0);
+            turnTowards(npc, toward);
         }
     } else if (!walking() && !npc.isBusy() && buttons.pendingDraw == 0U && toward != npc.direction()) {
-        turnNpc(npc.id, toward, 1, 0);
+        turnTowards(npc, toward);
     }
 }
 

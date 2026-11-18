@@ -630,6 +630,16 @@ std::size_t layerCount = 0;
 const int LAYER_SIDE = 320;
 std::uint32_t layerPicture[LAYER_SIDE * LAYER_SIDE];
 
+/* The box of the pixels his last drawing wrote (the camera's draws of a
+ * tick: its dirty areas one after the other), and that tick: the layer's
+ * pixels are only his within it (another of the screen's may have his
+ * colour by chance where he stood before). */
+int passLeft = 0;
+int passTop = 0;
+int passRight = -1;
+int passBottom = -1;
+u32 passTime = 0;
+
 void clearLayer()
 {
     for (std::size_t i = 0; i < layerCount; i++) {
@@ -734,9 +744,17 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
         clearLayer();
         return false;
     }
-    if (hardwareSetting()) {
+    if (hardwareSetting() && view.pixels().pixels == drawViewport->pixels().pixels) {
         /* In the game's colours, his pixels kept for the layer. */
         const ViewportPixels pixels = view.pixels();
+        const u32 time = systemTimer->time();
+        if (time != passTime) {
+            passTime = time;
+            passLeft = SCREEN_WIDTH;
+            passTop = SCREEN_HEIGHT;
+            passRight = -1;
+            passBottom = -1;
+        }
         const u32 pitch = pixels.rows[1] - pixels.rows[0];
         const auto keep = [&pixels, pitch](u8 &out, u8 in) {
             out = in;
@@ -747,6 +765,10 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
                 return;
             }
             const u32 at = (row * SCREEN_WIDTH) + column;
+            passLeft = std::min(passLeft, static_cast<int>(column));
+            passRight = std::max(passRight, static_cast<int>(column));
+            passTop = std::min(passTop, static_cast<int>(row));
+            passBottom = std::max(passBottom, static_cast<int>(row));
             if (layerMap[at] == 0U) {
                 if (layerCount == LAYER_MOST) {
                     return;
@@ -763,7 +785,11 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
         }
         return true;
     }
-    clearLayer();
+    /* Else in the palette's nearest: without the hardware scene, or on the
+     * wide screen's sides (widesides.h), which the layer does not cover. */
+    if (!hardwareSetting()) {
+        clearLayer();
+    }
     const u8 *look = tableFor(chosen);
     const auto put = [look](u8 &out, u8 in) { out = look[in]; };
     const auto *bytes = reinterpret_cast<const u8 *>(frame);
@@ -793,7 +819,9 @@ void drawColoursLayer()
         const u32 at = layerPixels[i];
         const u32 column = at % SCREEN_WIDTH;
         const u32 row = at / SCREEN_WIDTH;
-        if (screen.pixels[screen.rows[row] + column] + 1 != layerMap[at]) {
+        if (screen.pixels[screen.rows[row] + column] + 1 != layerMap[at] || static_cast<int>(column) < passLeft ||
+            static_cast<int>(column) > passRight || static_cast<int>(row) < passTop ||
+            static_cast<int>(row) > passBottom) {
             layerMap[at] = 0;
             continue;
         }

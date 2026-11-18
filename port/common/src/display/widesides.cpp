@@ -2,6 +2,7 @@
 #include "widesides.h"
 #include "gamestate.h"
 #include "camera.h"
+#include "colours.h"
 #include "crusys.h"
 #include "dlist.h"
 #include "gamepal.h"
@@ -359,14 +360,15 @@ void drawItem(Viewport &view, const SideItem &side, i16 shift, i16 down)
             view.drawShapeMirroredTranslucent(x, y, image, paletteTables->translucent.get());
         } else if (info.translucent) {
             view.drawShapeMirroredRemapped(x, y, image, paletteTables->remap);
-        } else {
+        } else if (!Item(side.item).isSilencer() || !drawInColours(view, x, y, image, true)) {
             view.drawShapeMirrored(x, y, image);
         }
     } else if ((flags & ITEM_INVISIBLE) != 0) {
         view.drawShapeTranslucent(x, y, image, paletteTables->translucent.get());
     } else if (info.translucent) {
         view.drawShapeRemapped(x, y, image, paletteTables->remap);
-    } else {
+    } else if (!Item(side.item).isSilencer() || !drawInColours(view, x, y, image, false)) {
+        /* The port's: the Silencer in his colours (colours.h). */
         view.drawShape(x, y, image);
     }
 }

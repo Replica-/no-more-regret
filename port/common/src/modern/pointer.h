@@ -2,9 +2,12 @@
  * default): a free pointer in place of the original's mouse that stays in
  * the middle and steers. The Silencer faces the pointer; with the weapon
  * drawn he aims exactly at it (the reticle follows it, no target is chosen
- * for him). The left button walks to the point clicked (a double click runs)
- * or walks up to the item clicked and uses or takes it; the right button
- * draws the weapon, a tap puts it away and held it fires. The forward key
+ * for him). The left button puts the weapon away and walks to the point
+ * clicked (a double click runs) or up to the item clicked and uses or takes
+ * it; the right button draws the weapon and fires while it is held. He
+ * turns to the pointer a quarter turn at a step at most. The pointer stays
+ * the player's in the world when the Silencer is not (a scripted moment):
+ * it moves, and the mouse's buttons do nothing. The forward key
  * walks towards the pointer for as long as it is held, round what is in the
  * way. The other keys are the controller's, relative to the way he faces. */
 #ifndef PORT_POINTER_H
