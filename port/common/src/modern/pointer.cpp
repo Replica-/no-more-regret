@@ -12,6 +12,7 @@
 #include "dtable.h"
 #include "firetype.h"
 #include "shapes.h"
+#include "shaphand.h"
 #include "sprite_game.h"
 #include "hud.h"
 #include "itemdata.h"
@@ -73,6 +74,7 @@ struct WaitingKey {
     Action action;
     u32 at;
     u8 turning;
+    u32 turnedAt;
 };
 WaitingKey &waiting = gameGlobal<WaitingKey>();
 const u32 KEY_WAIT = 45;
@@ -96,9 +98,11 @@ struct Reach {
 };
 Reach &reach = gameGlobal<Reach>(Reach{});
 
-/* The most a turn to the pointer takes at a step: a quarter of the 16
- * directions. */
-const int TURN_STEP = 4;
+/* The most a turn to the pointer takes at a step, of the 16 directions,
+ * and the ticks before the next step cuts the stand short (the stand runs
+ * 7 or 8): the turn half as fast again as a quarter at a whole stand. */
+const int TURN_STEP = 6;
+const u32 TURN_TICKS = 5;
 
 /* His pose a combat one (the original's controls' inCombatStance), but
  * not one of peace: No Regret's teleport in leaves him in combat, standing
@@ -123,6 +127,11 @@ u16 standAnim(Npc &npc)
     return ANIM_STAND;
 }
 
+u32 now()
+{
+    return systemTimer->time();
+}
+
 /* A turn towards the pointer, the short way round, as far as TURN_STEP at
  * once: his stand in the new direction, not the game's turn of a step at a
  * time (turnFrom), which lags behind the mouse. */
@@ -133,12 +142,22 @@ void turnTowards(Npc &npc, char toward)
     const auto next = static_cast<u8>((npc.direction() + step) & 0xf);
     if (npc.doAnim(standAnim(npc), next, ONLY_IF_IDLE, 0) != 0U) {
         waiting.turning = 1;
+        waiting.turnedAt = now();
     }
 }
 
-u32 now()
+/* Free to turn: idle, or TURN_TICKS into a turn's stand, cut short. */
+bool turnFree(Npc &npc)
 {
-    return systemTimer->time();
+    if (!npc.isBusy()) {
+        return true;
+    }
+    if (waiting.turning == 0U || npc.lastAnimSet() != standAnim(npc) || now() - waiting.turnedAt < TURN_TICKS) {
+        return false;
+    }
+    killItemProcesses(npc.id, ANIM_TYPE, Priority(PRIORITY_EQUAL | BASE_LEVEL));
+    waiting.turning = 0;
+    return true;
 }
 
 /* The Silencer's weapon out, or being drawn: the flag and his pose. */
@@ -602,6 +621,14 @@ void pointerTick()
         return;
     }
     Npc npc(controlledActor);
+    /* Hidden in a blank frame (mission 1's start, till he teleports in): a
+     * turn or a draw would stand him there to be seen. */
+    FrameRect bounds{};
+    shapeCache->frameBounds(npc.shape(), npc.frame(), &bounds, 0, 0);
+    if (bounds.left == bounds.right) {
+        walkStop();
+        return;
+    }
     /* The target the original chooses is not the player's: the aim is the
      * pointer's. */
     targeting = 0;
@@ -659,10 +686,10 @@ void pointerTick()
             /* Not drawn: the cursor (hud.cpp) is where it is. */
             sprites[reticleSprite].flags |= SPRITE_UNSEEN;
         }
-        if (!walking() && !npc.isBusy() && toward != npc.direction()) {
+        if (!walking() && toward != npc.direction() && turnFree(npc)) {
             turnTowards(npc, toward);
         }
-    } else if (!walking() && !npc.isBusy() && buttons.pendingDraw == 0U && toward != npc.direction()) {
+    } else if (!walking() && buttons.pendingDraw == 0U && toward != npc.direction() && turnFree(npc)) {
         turnTowards(npc, toward);
     }
 }
