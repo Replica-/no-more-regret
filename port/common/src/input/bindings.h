@@ -156,6 +156,10 @@ enum class Action : u8 {
     NEXT_ITEM,
     SELECT_ITEMS,
     GRAB_ITEMS,
+    /* The port's wheels (modern/wheel.h): the weapons carried and the
+     * items, to choose from. */
+    WEAPON_WHEEL,
+    ITEM_WHEEL,
     /* The keys of the world's gump while it selects items
      * (WorldGump::handleKeyboard, selectItems). */
     SELECTION_PREVIOUS,
@@ -349,7 +353,10 @@ void toggleRunLock();
  * kernel's keyShift); an action without a key (READY_WEAPON) has scan code
  * 0. */
 KeyEvent actionKey(Action action, u8 pressed, u16 repeat);
-/* The key code of a world's or a selection's action: its original's first. */
+/* The key code of a world's or a selection's action: its original's first;
+ * for one the original has no key for (the port's), PORT_ACTION_CODE with
+ * the action's number, which no key has. */
+constexpr int PORT_ACTION_CODE = 0x4000;
 i16 actionCode(Action action);
 /* Whether the action comes to the controller (a key), to the world's gump
  * (a code), or is a mode's. */

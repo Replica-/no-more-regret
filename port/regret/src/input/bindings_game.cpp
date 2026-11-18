@@ -98,6 +98,9 @@ const ActionDefault GAME_ACTION_DEFAULTS[] = {
     {Action::NEXT_ITEM, "o O pad_right"},
     {Action::SELECT_ITEMS, "s S"},
     {Action::GRAB_ITEMS, "g G"},
+    /* The port's own: none in the original's layout. */
+    {Action::WEAPON_WHEEL, ""},
+    {Action::ITEM_WHEEL, ""},
     {Action::SELECTION_PREVIOUS, ", < wheel_up pad_left lstick_left"},
     {Action::SELECTION_NEXT, ". > s S wheel_down pad_right lstick_right"},
     {Action::SELECTION_CHOOSE, "enter space insert pad_a"},
@@ -121,7 +124,8 @@ const std::size_t GAME_ACTION_DEFAULT_COUNT = std::size(GAME_ACTION_DEFAULTS);
  * takes both buttons and the forward key), Q and E roll, Space jumps, C
  * kneels, N selects the items about (E chooses among them), F grabs them, G uses the item held,
  * H the medical kit, T the energy cube, Y the radiation shield, R readies
- * the weapon, Tab the datalink (Ctrl+D rolls); the joystick's calibration
+ * the weapon, Tab opens the weapon wheel and I the item wheel, L the
+ * datalink (Ctrl+D rolls); the joystick's calibration
  * (Alt+C, which C's kneeling would come with) is bound to nothing: the game
  * port has no joystick (input.h). The other actions keep the original's
  * inputs. */
@@ -136,17 +140,19 @@ const ActionDefault GAME_MODERN_BINDINGS[] = {
     {Action::FIRE, "kp0 mouse_left mouse_left_double pad_rt"},
     {Action::JUMP, "j space pad_a"},
     {Action::READY_WEAPON, "r mouse_right mouse_right_double pad_y"},
-    {Action::DATALINK, "tab"},
+    {Action::DATALINK, "l L"},
     {Action::CALIBRATE_JOYSTICK, ""},
     {Action::SELECT_ITEMS, "n N"},
     {Action::GRAB_ITEMS, "f F"},
+    {Action::WEAPON_WHEEL, "tab"},
+    {Action::ITEM_WHEEL, "i I"},
     {Action::USE_ITEM, "u U g G pad_x"},
-    {Action::USE_MEDKIT, "m M h H pad_up"},
+    {Action::USE_MEDKIT, "h H pad_up"},
     {Action::USE_ENERGY_CUBE, "t T"},
     {Action::USE_RADIATION_SHIELD, "y Y"},
     {Action::PREVIOUS_WEAPON, "wheel_up pad_lb"},
     {Action::NEXT_WEAPON, "wheel_down pad_rb"},
-    {Action::PREVIOUS_ITEM, "i I mouse_x1 pad_left"},
+    {Action::PREVIOUS_ITEM, "mouse_x1 pad_left"},
     {Action::NEXT_ITEM, "o O mouse_x2 pad_right"},
     {Action::SELECTION_NEXT, ". > wheel_down pad_right lstick_right"},
     {Action::SELECTION_CHOOSE, "enter insert e pad_a"},

@@ -115,6 +115,8 @@ constexpr ActionInfo ACTION_INFOS[] = {
     {Action::NEXT_ITEM, "next_item", Domain::WORLD},
     {Action::SELECT_ITEMS, "select_items", Domain::WORLD},
     {Action::GRAB_ITEMS, "grab_items", Domain::WORLD},
+    {Action::WEAPON_WHEEL, "weapon_wheel", Domain::WORLD},
+    {Action::ITEM_WHEEL, "item_wheel", Domain::WORLD},
     {Action::SELECTION_PREVIOUS, "selection_previous", Domain::SELECTION},
     {Action::SELECTION_NEXT, "selection_next", Domain::SELECTION},
     {Action::SELECTION_CHOOSE, "selection_choose", Domain::SELECTION},
@@ -1041,9 +1043,14 @@ bool codeOf(Domain domain, i16 code, i16 *result)
     return false;
 }
 
-/* The world's or the selection's action of an original code. */
+/* The world's or the selection's action of an original code, or of the
+ * code of its own an action without an original key has (actionCode). */
 Action codeAction(Domain domain, i16 code)
 {
+    if ((code & PORT_ACTION_CODE) != 0) {
+        const auto index = static_cast<std::size_t>(code & 0xff);
+        return (index < ACTIONS && ACTION_INFOS[index].domain == domain) ? ACTION_INFOS[index].action : Action::NONE;
+    }
     for (std::size_t index = 1; index < ACTIONS; index++) {
         if (ACTION_INFOS[index].domain != domain) {
             continue;
@@ -1448,6 +1455,11 @@ i16 actionCode(Action action)
         if (input.kind == InputKind::CODE) {
             return input.code;
         }
+    }
+    /* The port's own actions, which the original has no key for, have
+     * codes of their own, past the keys'. */
+    if (codeActionOf(action)) {
+        return static_cast<i16>(PORT_ACTION_CODE | indexOf(action));
     }
     return 0;
 }

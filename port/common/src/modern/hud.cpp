@@ -12,6 +12,7 @@
 #include "pfloat.h"
 #include "pointer.h"
 #include "systimer.h"
+#include "wheel.h"
 #include "type.h"
 
 #include <algorithm>
@@ -144,6 +145,9 @@ void path()
 
 void drawHud()
 {
+    if (drawWheel()) {
+        return;
+    }
     if (worldActive != 0U) {
         healthBars();
     }
