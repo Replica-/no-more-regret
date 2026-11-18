@@ -15,6 +15,7 @@
 #include "pfloat.h"
 #include "pointer.h"
 #include "jump.h"
+#include "popups.h"
 #include "shaphand.h"
 #include "screen.h"
 #include "systimer.h"
@@ -162,6 +163,7 @@ void drawHud()
     }
     if (worldActive != 0U) {
         healthBars();
+        drawPopups();
     }
     if (!pointerMode()) {
         return;
@@ -219,6 +221,15 @@ void wordsPicture(u16 shape, u16 frame, i16 x, i16 y)
     icon.setFrame(frame);
     const Rect area = icon.dimensions();
     icon.draw(static_cast<u16>(x - ((area.left + area.right) / 2)), static_cast<u16>(y - ((area.top + area.bottom) / 2)));
+}
+
+void wordsGump(u16 shape, u16 frame, i16 x, i16 y)
+{
+    Viewport view(VIEWPORT_LARGE, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, canvas);
+    const DrawTarget target(&view);
+    GumpShape icon(shape);
+    icon.setFrame(frame);
+    icon.draw(static_cast<u16>(x), static_cast<u16>(y));
 }
 
 void wordsShape(u16 shape, u16 frame, bool mirrored, i16 x, i16 y)

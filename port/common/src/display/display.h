@@ -1,7 +1,8 @@
 /* DISPLAY.C (Code53): the pickup display. The items the player picks up are
  * listed at the top left of the screen, eight at most, each with its gump
  * shape, name and count, until four seconds pass without another of the
- * kind. */
+ * kind. The port draws them over the places their items came from
+ * (modern/popups.h) instead. */
 #ifndef PORT_DISPLAY_H
 #define PORT_DISPLAY_H
 #include "common.h"
@@ -36,6 +37,8 @@ public:
 };
 ASSERT_SIZE(PickupProcess, 0x36);
 
+/* The lines (the port's modern/popups.cpp draws them). */
+extern Pickup (&pickups)[PICKUPS];
 /* Set while the world is frozen (WORLD.C): the lines are not drawn. */
 extern u8 &pickupsFrozen;
 

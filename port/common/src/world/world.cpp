@@ -10,6 +10,7 @@
 #include "pointer.h"
 #include "wheel.h"
 #include "missionmap.h"
+#include "popups.h"
 #include "widesides.h"
 #include "waits.h"
 #include "world_game.h"
@@ -738,6 +739,8 @@ bool pickUp(u16 item, u8 flag)
     if (item == 0U) {
         return false;
     }
+    /* The port's: where it came from, for the pickup display (popups.h). */
+    notePickupSource(item);
     Item it(item);
     if (!it.isValid()) {
         return false;

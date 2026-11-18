@@ -33,6 +33,8 @@ void wordsBegin();
 void wordsText(i16 font, i16 x, i16 y, const char *text, i16 align);
 [[nodiscard]] i16 wordsWidth(i16 font, const char *text);
 void wordsPicture(u16 shape, u16 frame, i16 x, i16 y);
+/* A gump shape's frame with its origin at x,y. */
+void wordsGump(u16 shape, u16 frame, i16 x, i16 y);
 void wordsShape(u16 shape, u16 frame, bool mirrored, i16 x, i16 y);
 void wordsEnd(u8 alpha = 0xff);
 #endif

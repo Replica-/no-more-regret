@@ -10,8 +10,11 @@
 #include "item.h"
 #include "itemdata.h"
 #include "type.h"
+#include "popups.h"
 
 void agePickups();
+/* The port's: the lines are drawn over the places their items came from. */
+constexpr bool PICKUPS_OVER_SOURCES = true;
 void pickupInfo(u16 id, const char **name, u16 *shape, u16 *frame);
 
 u8 &pickupsFrozen = gameGlobal<u8>(0);
@@ -71,6 +74,14 @@ void clearPickups()
 void drawPickups()
 {
     if (pickupsFrozen != 0U) {
+        return;
+    }
+    /* The port draws the lines over the places their items came from
+     * (popups.h): none on the screen to draw or to erase. */
+    if (PICKUPS_OVER_SOURCES) {
+        for (Pickup &pickup : pickups) {
+            pickup.redraw = 0;
+        }
         return;
     }
     RectLink *link = nullptr;
@@ -164,6 +175,7 @@ void addPickup(u16 id)
                     }
                     pickups[i].redraw = 1;
                     pickups[i].timeLeft = 4;
+                    notePickupLine(i);
                     return;
                 }
             }
@@ -194,6 +206,7 @@ void addPickup(u16 id)
                     pickup->count = 1;
                 }
                 pickup->area.moveTo(4, (i * 32) + 4);
+                notePickupLine(i);
                 pickup->timeLeft = 4;
                 pickup->redraw = 1;
                 if (item.shape() == SHAPE_CREDITS) {
