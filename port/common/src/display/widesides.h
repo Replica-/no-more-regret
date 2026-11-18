@@ -11,6 +11,7 @@
  * random number of the game's. */
 #ifndef PORT_WIDESIDES_H
 #define PORT_WIDESIDES_H
+#include "common.h"
 
 class BasePalette;
 
@@ -22,6 +23,9 @@ const int TALL_FRAME_MOST = 864;
  * (screen.h's screenShowFrame): its rows below the screen, the screen's
  * place being in its middle; 0 when they stay where the screen has them. */
 int wideStatusDown();
+/* The sides' pixels as last drawn, width x height of them (the screen's
+ * middle not theirs); 0 for none. */
+[[nodiscard]] const u8 *wideSidesPixels(int *width, int *height);
 /* The sides of the camera's frame, drawn and shown; nothing when the wide
  * screen is off. */
 void drawWideSides();

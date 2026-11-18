@@ -12,6 +12,7 @@
 #define PORT_COLOURS_H
 #include "common.h"
 
+#include <cstdint>
 #include <string>
 
 class NewGump;
@@ -31,6 +32,10 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
  * the screen in his colours exactly, as the screen's palette has them now
  * (its fades), by the graphics card (hud.cpp, under the lighting). */
 void drawColoursLayer();
+/* A pixel at address of view (the screen or the wide screen's sides) that
+ * was written in the palette's written but is rgb (0xRRGGBB) exactly: with
+ * the hardware scene, shown so by the same layer (the blood's, blood.h). */
+void keepExact(Viewport &view, u8 *address, u8 written, std::uint32_t rgb);
 /* Opens the choice over the world; the choice as a gump of its own (the
  * settings' button opens it); draws it while it is open, true then
  * (hud.cpp). */

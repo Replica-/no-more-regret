@@ -9,6 +9,7 @@
 #include "item.h"
 #include "itemcach.h"
 #include "itemdata.h"
+#include "colours.h"
 #include "overlay.h"
 #include "pointer.h"
 #include "pfloat.h"
@@ -186,6 +187,17 @@ void step()
     dropCount = kept;
 }
 
+/* The colour reddened as it is, 0xRRGGBB: a fifth of the colour, four
+ * fifths of the blood's. */
+std::uint32_t reddenedExactly(u8 under)
+{
+    const RGB *colours = gamePalette->data.get();
+    const auto part = [](int component, int blood) {
+        return static_cast<std::uint32_t>(((((component * 2) + (blood * 8)) * 255) / 10) / 63);
+    };
+    return part(colours[under].red, 50) << 16 | part(colours[under].green, 3) << 8 | part(colours[under].blue, 5);
+}
+
 u8 reddenedOf(u8 under)
 {
     if (reddenedKnown[under] == 0U) {
@@ -334,7 +346,10 @@ void paintBlood(u16 item, Viewport &view)
                     continue;
                 }
                 u8 *pixel = view.address(static_cast<s16>(x), static_cast<s16>(y));
-                *pixel = reddenedOf(*pixel);
+                const u8 under = *pixel;
+                *pixel = reddenedOf(under);
+                /* With the hardware scene, the reddening exactly (colours.h). */
+                keepExact(view, pixel, *pixel, reddenedExactly(under));
             }
         }
     }

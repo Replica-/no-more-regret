@@ -400,6 +400,13 @@ void drawSidesSprites(Viewport &view, i16 shift, i16 down)
 
 }
 
+const u8 *wideSidesPixels(int *width, int *height)
+{
+    *width = pixelsWidth;
+    *height = pixelsHeight;
+    return covered ? nullptr : pixels;
+}
+
 int wideStatusDown()
 {
     const int height = screenWideHeight();

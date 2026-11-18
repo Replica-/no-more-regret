@@ -4,6 +4,7 @@
 #include "animcach.h"
 #include "animprim.h"
 #include "bindings.h"
+#include "camera.h"
 #include "control.h"
 #include "crusys.h"
 #include "dispatch.h"
@@ -22,6 +23,7 @@
 #include "shaphand.h"
 #include "systimer.h"
 #include "viewport.h"
+#include "widesides.h"
 #include "world.h"
 
 #include <algorithm>
@@ -620,15 +622,38 @@ void ColoursGump::draw() const
     preview();
 }
 
-/* The hardware scene's layer: for each pixel of the screen the Silencer
- * was drawn at, his palette entry and 1 (0 for none), and those pixels. */
-u16 layerMap[SCREEN_WIDTH * SCREEN_HEIGHT];
-const std::size_t LAYER_MOST = 32768;
+/* The hardware scene's layer: the pixels drawn in the palette that are
+ * shown in their colours exactly, the Silencer's and the blood's: for each
+ * pixel of the frame the palette entry written and 1 (0 for none), its
+ * colour (0 for the Silencer's colours of the entry, else 0xRRGGBBFF), and
+ * those pixels. Its pixels are the wide screen's frame's (widesides.h): the
+ * screen in its middle, the sides round it; LAYER_FRAME_WIDTH a row. */
+const int LAYER_FRAME_WIDTH = WIDE_FRAME_MOST;
+const int LAYER_FRAME_HEIGHT = TALL_FRAME_MOST;
+u16 layerMap[LAYER_FRAME_WIDTH * LAYER_FRAME_HEIGHT];
+std::uint32_t layerColour[LAYER_FRAME_WIDTH * LAYER_FRAME_HEIGHT];
+/* The Silencer's pixels' entries of the game's colours (layerMap has the
+ * palette's nearest to his colours, which the screen shows under). */
+u8 layerSource[LAYER_FRAME_WIDTH * LAYER_FRAME_HEIGHT];
+/* The camera's scroll the screen's pixels were kept at: the camera moves
+ * the screen's pixels when it scrolls, without drawing them again. */
+i16 layerScrollX = 0;
+i16 layerScrollY = 0;
+/* For the move of the pixels kept. */
+u32 movedAt[262144];
+u16 movedMap[262144];
+std::uint32_t movedColour[262144];
+u8 movedSource[262144];
+/* The frame they were kept for: its columns left of the screen and rows
+ * above it. */
+int layerLeft = 0;
+int layerTop = 0;
+const std::size_t LAYER_MOST = 262144;
+void followScroll();
 u32 layerPixels[LAYER_MOST];
 std::size_t layerCount = 0;
-/* The layer's picture, its box's pixels (at most LAYER_SIDE square). */
-const int LAYER_SIDE = 320;
-std::uint32_t layerPicture[LAYER_SIDE * LAYER_SIDE];
+/* The layer's picture, its box's pixels. */
+std::uint32_t layerPicture[LAYER_FRAME_WIDTH * LAYER_FRAME_HEIGHT];
 
 /* The box of the pixels his last drawing wrote (the camera's draws of a
  * tick: its dirty areas one after the other), and that tick: the layer's
@@ -640,12 +665,105 @@ int passRight = -1;
 int passBottom = -1;
 u32 passTime = 0;
 
+/* The frame now: its columns left of the screen and rows above it; the
+ * layer cleared when they changed. */
+void clearLayer();
+void followFrame()
+{
+    const int left = (std::min<int>(screenWideWidth(), LAYER_FRAME_WIDTH) - SCREEN_WIDTH) / 2;
+    const int top = (std::min<int>(screenWideHeight(), LAYER_FRAME_HEIGHT) - SCREEN_HEIGHT) / 2;
+    if (left != layerLeft || top != layerTop) {
+        clearLayer();
+        layerLeft = left;
+        layerTop = top;
+    }
+}
+
 void clearLayer()
 {
     for (std::size_t i = 0; i < layerCount; i++) {
         layerMap[layerPixels[i]] = 0;
     }
     layerCount = 0;
+}
+
+/* A pixel at address of a view's pixels as the layer's place on the frame:
+ * the screen's (drawViewport's) or the wide screen's sides'; false for
+ * another view or off the frame. */
+bool framePixel(const ViewportPixels &pixels, const u8 *address, u32 *at)
+{
+    int sidesWidth = 0;
+    int sidesHeight = 0;
+    const u8 *sides = wideSidesPixels(&sidesWidth, &sidesHeight);
+    const bool onScreen = drawViewport != nullptr && pixels.pixels == drawViewport->pixels().pixels;
+    if (!onScreen && (sides == nullptr || pixels.pixels != sides)) {
+        return false;
+    }
+    followFrame();
+    const u32 pitch = pixels.rows[1] - pixels.rows[0];
+    const auto offset = static_cast<u32>(address - pixels.pixels);
+    const auto column = static_cast<int>(offset % pitch) + (onScreen ? layerLeft : 0);
+    const auto row = static_cast<int>(offset / pitch) + (onScreen ? layerTop : 0);
+    if (column >= LAYER_FRAME_WIDTH || row >= LAYER_FRAME_HEIGHT) {
+        return false;
+    }
+    *at = static_cast<u32>((row * LAYER_FRAME_WIDTH) + column);
+    return true;
+}
+
+/* The pixels kept of the screen moved as the camera's scroll moved since
+ * (those of the sides are drawn again each frame, and go as they are no
+ * longer theirs). */
+void followScroll()
+{
+    const int dx = layerScrollX - scrollX;
+    const int dy = layerScrollY - scrollY;
+    layerScrollX = scrollX;
+    layerScrollY = scrollY;
+    if ((dx == 0 && dy == 0) || layerCount == 0) {
+        return;
+    }
+    const std::size_t count = layerCount;
+    for (std::size_t i = 0; i < count; i++) {
+        const u32 at = layerPixels[i];
+        movedAt[i] = at;
+        movedMap[i] = layerMap[at];
+        movedColour[i] = layerColour[at];
+        movedSource[i] = layerSource[at];
+        layerMap[at] = 0;
+    }
+    layerCount = 0;
+    passLeft += dx;
+    passRight += dx;
+    passTop += dy;
+    passBottom += dy;
+    for (std::size_t i = 0; i < count; i++) {
+        const int column = static_cast<int>(movedAt[i] % LAYER_FRAME_WIDTH) + dx;
+        const int row = static_cast<int>(movedAt[i] / LAYER_FRAME_WIDTH) + dy;
+        if (column < 0 || column >= LAYER_FRAME_WIDTH || row < 0 || row >= LAYER_FRAME_HEIGHT) {
+            continue;
+        }
+        const auto at = static_cast<u32>((row * LAYER_FRAME_WIDTH) + column);
+        if (layerMap[at] == 0U) {
+            layerPixels[layerCount++] = at;
+        }
+        layerMap[at] = movedMap[i];
+        layerColour[at] = movedColour[i];
+        layerSource[at] = movedSource[i];
+    }
+}
+
+/* A pixel of the layer: the entry written there and its colour. */
+void keepPixel(u32 at, u8 written, std::uint32_t colour)
+{
+    if (layerMap[at] == 0U) {
+        if (layerCount == LAYER_MOST) {
+            return;
+        }
+        layerPixels[layerCount++] = at;
+    }
+    layerMap[at] = static_cast<u16>(written + 1);
+    layerColour[at] = colour;
 }
 
 /* Each palette entry of a ramp in the colours as red, green, blue and an
@@ -741,41 +859,40 @@ void setColoursText(const std::string &text)
 bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrored)
 {
     if (chosen == PRESETS[0].colours) {
-        clearLayer();
+        /* His pixels kept before go as the screen no longer shows them
+         * (drawColoursLayer); the blood's stay. */
         return false;
     }
-    if (hardwareSetting() && view.pixels().pixels == drawViewport->pixels().pixels) {
-        /* In the game's colours, his pixels kept for the layer. */
-        const ViewportPixels pixels = view.pixels();
+    /* With the hardware scene, on the screen or the wide screen's sides: in
+     * the game's colours, his pixels kept for the layer at their places on
+     * the frame. */
+    const ViewportPixels pixels = view.pixels();
+    u32 first = 0;
+    if (hardwareSetting() && framePixel(pixels, pixels.pixels, &first)) {
         const u32 time = systemTimer->time();
         if (time != passTime) {
             passTime = time;
-            passLeft = SCREEN_WIDTH;
-            passTop = SCREEN_HEIGHT;
+            passLeft = LAYER_FRAME_WIDTH;
+            passTop = LAYER_FRAME_HEIGHT;
             passRight = -1;
             passBottom = -1;
         }
-        const u32 pitch = pixels.rows[1] - pixels.rows[0];
-        const auto keep = [&pixels, pitch](u8 &out, u8 in) {
-            out = in;
-            const auto offset = static_cast<u32>(&out - pixels.pixels);
-            const u32 column = offset % pitch;
-            const u32 row = offset / pitch;
-            if (column >= SCREEN_WIDTH || row >= SCREEN_HEIGHT) {
+        const u8 *look = tableFor(chosen);
+        followScroll();
+        const auto keep = [&pixels, look](u8 &out, u8 in) {
+            out = look[in];
+            u32 at = 0;
+            if (!framePixel(pixels, &out, &at)) {
                 return;
             }
-            const u32 at = (row * SCREEN_WIDTH) + column;
-            passLeft = std::min(passLeft, static_cast<int>(column));
-            passRight = std::max(passRight, static_cast<int>(column));
-            passTop = std::min(passTop, static_cast<int>(row));
-            passBottom = std::max(passBottom, static_cast<int>(row));
-            if (layerMap[at] == 0U) {
-                if (layerCount == LAYER_MOST) {
-                    return;
-                }
-                layerPixels[layerCount++] = at;
-            }
-            layerMap[at] = static_cast<u16>(in + 1);
+            const auto column = static_cast<int>(at % LAYER_FRAME_WIDTH);
+            const auto row = static_cast<int>(at / LAYER_FRAME_WIDTH);
+            passLeft = std::min(passLeft, column);
+            passRight = std::max(passRight, column);
+            passTop = std::min(passTop, row);
+            passBottom = std::max(passBottom, row);
+            keepPixel(at, look[in], 0);
+            layerSource[at] = in;
         };
         const auto *bytes = reinterpret_cast<const u8 *>(frame);
         if (mirrored) {
@@ -785,8 +902,7 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
         }
         return true;
     }
-    /* Else in the palette's nearest: without the hardware scene, or on the
-     * wide screen's sides (widesides.h), which the layer does not cover. */
+    /* Else in the palette's nearest (without the hardware scene). */
     if (!hardwareSetting()) {
         clearLayer();
     }
@@ -801,53 +917,100 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
     return true;
 }
 
+void keepExact(Viewport &view, u8 *address, u8 written, std::uint32_t rgb)
+{
+    u32 at = 0;
+    if (hardwareSetting() && framePixel(view.pixels(), address, &at)) {
+        followScroll();
+        keepPixel(at, written, (rgb << 8) | 0xffU);
+    }
+}
+
 void drawColoursLayer()
 {
-    if (!hardwareSetting() || chosen == PRESETS[0].colours || layerCount == 0 || worldActive == 0U ||
-        worldFrozen != 0U || drawViewport == nullptr) {
+    if (!hardwareSetting() || layerCount == 0 || worldActive == 0U || worldFrozen != 0U || drawViewport == nullptr) {
         return;
     }
-    /* The pixels still his on the screen drawn (another item over him, or
-     * him moved away: no longer), and their box. */
+    followFrame();
+    followScroll();
+    int sidesWidth = 0;
+    int sidesHeight = 0;
+    const u8 *sides = wideSidesPixels(&sidesWidth, &sidesHeight);
+    /* The pixels still his on the frame drawn (the screen in its middle, the
+     * sides round it; another item over him, or him moved away: no longer),
+     * and their box. */
     const ViewportPixels screen = drawViewport->pixels();
-    int left = SCREEN_WIDTH;
-    int top = SCREEN_HEIGHT;
+    int left = LAYER_FRAME_WIDTH;
+    int top = LAYER_FRAME_HEIGHT;
     int right = -1;
     int bottom = -1;
     std::size_t kept = 0;
     for (std::size_t i = 0; i < layerCount; i++) {
         const u32 at = layerPixels[i];
-        const u32 column = at % SCREEN_WIDTH;
-        const u32 row = at / SCREEN_WIDTH;
-        if (screen.pixels[screen.rows[row] + column] + 1 != layerMap[at] || static_cast<int>(column) < passLeft ||
-            static_cast<int>(column) > passRight || static_cast<int>(row) < passTop ||
-            static_cast<int>(row) > passBottom) {
+        const auto column = static_cast<int>(at % LAYER_FRAME_WIDTH);
+        const auto row = static_cast<int>(at / LAYER_FRAME_WIDTH);
+        const int screenX = column - layerLeft;
+        const int screenY = row - layerTop;
+        int shown = -1;
+        if (screenX >= 0 && screenX < SCREEN_WIDTH && screenY >= 0 && screenY < SCREEN_HEIGHT) {
+            shown = screen.pixels[screen.rows[screenY] + screenX];
+        } else if (sides != nullptr && column < sidesWidth && row < sidesHeight) {
+            shown = sides[(static_cast<std::size_t>(row) * sidesWidth) + column];
+        }
+        /* The Silencer's only within his last drawing; the blood's as long
+         * as the screen keeps them. */
+        const bool his = layerColour[at] == 0U;
+        if (shown + 1 != layerMap[at] ||
+            (his && (column < passLeft || column > passRight || row < passTop || row > passBottom))) {
             layerMap[at] = 0;
             continue;
         }
         layerPixels[kept++] = at;
-        left = std::min(left, static_cast<int>(column));
-        right = std::max(right, static_cast<int>(column));
-        top = std::min(top, static_cast<int>(row));
-        bottom = std::max(bottom, static_cast<int>(row));
+        left = std::min(left, column);
+        right = std::max(right, column);
+        top = std::min(top, row);
+        bottom = std::max(bottom, row);
     }
     layerCount = kept;
-    if (right < left || right - left >= LAYER_SIDE || bottom - top >= LAYER_SIDE) {
+    if (right < left) {
         return;
     }
     std::uint32_t exact[256];
     exactColours(exact, true);
+    /* The palette's fade of each entry (the screen's against the game's,
+     * of 256), for the colours of their own. */
+    u8 now[256 * 3];
+    screenGetColors(0, 256, now);
+    const RGB *palette = gamePalette->data.get();
+    const auto fadeOf = [&](u8 entry, int k) {
+        const u8 base = k == 0 ? palette[entry].red : k == 1 ? palette[entry].green : palette[entry].blue;
+        return base == 0U ? 256 : ((now[(entry * 3) + k] & 0x3f) * 256) / base;
+    };
     const int width = right - left + 1;
     const int height = bottom - top + 1;
     std::fill_n(layerPicture, static_cast<std::size_t>(width) * height, 0U);
     for (std::size_t i = 0; i < layerCount; i++) {
         const u32 at = layerPixels[i];
-        const auto column = static_cast<int>(at % SCREEN_WIDTH);
-        const auto row = static_cast<int>(at / SCREEN_WIDTH);
-        layerPicture[(static_cast<std::size_t>(row - top) * width) + (column - left)] = exact[layerMap[at] - 1];
+        const auto column = static_cast<int>(at % LAYER_FRAME_WIDTH);
+        const auto row = static_cast<int>(at / LAYER_FRAME_WIDTH);
+        const auto entry = static_cast<u8>(layerMap[at] - 1);
+        std::uint32_t colour = layerColour[at];
+        if (colour == 0U) {
+            colour = exact[layerSource[at]];
+        } else {
+            std::uint32_t faded = 0xffU;
+            for (int k = 0; k < 3; k++) {
+                const int component = static_cast<int>((colour >> (24 - (8 * k))) & 0xffU);
+                faded |= static_cast<std::uint32_t>(std::min(255, (component * fadeOf(entry, k)) / 256))
+                         << (24 - (8 * k));
+            }
+            colour = faded;
+        }
+        layerPicture[(static_cast<std::size_t>(row - top) * width) + (column - left)] = colour;
     }
-    overlayPictureAs(layerPicture, width, height, static_cast<float>(left), static_cast<float>(top),
-                     static_cast<float>(width), static_cast<float>(height), OverlayBlend::BLEND, true);
+    overlayPictureAs(layerPicture, width, height, static_cast<float>(left - layerLeft),
+                     static_cast<float>(top - layerTop), static_cast<float>(width), static_cast<float>(height),
+                     OverlayBlend::BLEND, true);
 }
 
 void openColours()
