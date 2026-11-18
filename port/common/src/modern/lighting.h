@@ -6,8 +6,10 @@
  * the distance, the brightest winning where lights meet: lamps, screens,
  * fire, shots and explosions light the dark. A soft light follows the
  * Silencer so that the dark stays readable. The status display stays
- * as it is. Drawn over the game (platform/overlay.h) as a layer of shade,
- * from a small map of the light that the window scales up smoothly. */
+ * as it is. Each light is worked out for each pixel of the frame, a
+ * short reach fading smoothly, and drawn over the game (platform/overlay.h):
+ * a layer of shade, or with the hardware scene (enhancements.h) the screen
+ * multiplied by the light in its colour and the colour's glow added. */
 #ifndef PORT_LIGHTING_H
 #define PORT_LIGHTING_H
 #include "common.h"

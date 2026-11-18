@@ -27,26 +27,22 @@
 
 namespace {
 
-/* The map of the light: cells of CELL pixels, over the screen and the
- * wide screen's frame round it (SIDE cells each side, ABOVE above and
- * below, the most the frame has). */
-const int CELL = 8;
-const int SIDE = (WIDE_FRAME_MOST - SCREEN_WIDTH) / 2 / CELL;
-const int ABOVE = (TALL_FRAME_MOST - SCREEN_HEIGHT) / 2 / CELL;
-const int COLUMNS = (SCREEN_WIDTH / CELL) + (2 * SIDE);
-const int ROWS = (SCREEN_HEIGHT / CELL) + (2 * ABOVE);
-/* The shade where nothing lights (of 255: about 80 % of the art); a
- * picture's light (GLOWING of its pixels glowing give the full light;
- * fewer than MOST_STRAY are stray pixels of the art, no light); the light
- * kept a cell further on (straight, and diagonally); the Silencer's: its
- * strength and reach in pixels. */
+/* The light, a pixel of the frame each: the screen and the wide screen's
+ * frame round it (WIDE_FRAME_MOST x TALL_FRAME_MOST at most). The shade
+ * where nothing lights (of 255: about 80 % of the art); a picture's light
+ * (GLOWING of its pixels glowing give the full light; fewer than
+ * MOST_STRAY are stray pixels of the art, no light) and its reach in
+ * pixels, NEAREST for the faintest and FARTHEST for the full one, half as
+ * far up and down (the floor seen at its angle, as the isometric view has
+ * it); the Silencer's: its strength and reach. */
+const int MOST_PIXELS = WIDE_FRAME_MOST * TALL_FRAME_MOST;
 const float SHADE = 56;
 const int GLOWING = 24;
 const int MOST_STRAY = 6;
-const float FADE = 0.93F;
-const float FADE_DIAGONAL = 0.86F;
-const float OWN_LIGHT = 0.6F;
-const float OWN_REACH = 90;
+const float NEAREST = 14;
+const float FARTHEST = 54;
+const float OWN_LIGHT = 0.5F;
+const float OWN_REACH = 64;
 
 /* The palette's light colours: 1-7 (yellows to red, which the palette
  * cycles), 8-14 (the translucent glows) and the lone bright entries
@@ -65,35 +61,45 @@ constexpr std::array<u8, 256> LIGHT_COLOURS = [] {
 
 bool &lightingOn = gameSetting<bool>(false);
 
-float light[ROWS][COLUMNS];
-/* Each cell's light's colour (0xRRGGBB): its brightest source's. */
-std::uint32_t tint[ROWS][COLUMNS];
-std::uint32_t shade[ROWS * COLUMNS];
-/* The hardware scene's: the light the screen is multiplied by, and the
- * glow added to it. */
-std::uint32_t multiplied[ROWS * COLUMNS];
-std::uint32_t added[ROWS * COLUMNS];
+/* Each pixel's light (0-255) and its colour (0xRRGGBB, its brightest
+ * source's); the frame's size and its columns left of the screen and rows
+ * above it. */
+u8 light[MOST_PIXELS];
+std::uint32_t tint[MOST_PIXELS];
+int frameWidth = SCREEN_WIDTH;
+int frameHeight = SCREEN_HEIGHT;
+int frameLeft = 0;
+int frameTop = 0;
+/* The pictures laid over: the shade (blended), or with the hardware
+ * scene the light the screen is multiplied by and the glow added to it. */
+std::uint32_t multiplied[MOST_PIXELS];
+std::uint32_t added[MOST_PIXELS];
 /* The Silencer's own light's colour, a warm white; how much of the light's
- * colour tints the light, and how much of it is added as a glow. */
+ * colour tints the light (of 256), and how much of it is added as a glow
+ * (of 255). */
 const std::uint32_t OWN_TINT = 0xfff2e0;
-const float TINTED = 0.3F;
-const float GLOW = 0.18F;
+const int TINTED = 77;
+const int GLOW = 46;
 
-/* The status display's parts, which are not the world's: where the screen
- * has them, or moved down to the frame's bottom (widesides.h). */
-bool overStatus(int x, int y)
+/* The status display's parts on the frame, which are not the world's:
+ * where the screen has them, or moved down to the frame's bottom
+ * (widesides.h); count of them. */
+Rect statusBoxes[STATUS_PARTS];
+int statusCount = 0;
+
+void findStatus()
 {
+    statusCount = 0;
     if (statusShown == 0U) {
-        return false;
+        return;
     }
     const int down = wideStatusDown();
     for (const StatusPart &part : statusParts) {
-        if (x >= part.area.left - CELL && x <= part.area.right && y >= part.area.top + down - CELL &&
-            y <= part.area.bottom + down) {
-            return true;
-        }
+        statusBoxes[statusCount++] = Rect(static_cast<i16>(part.area.left + frameLeft),
+                                          static_cast<i16>(part.area.top + down + frameTop),
+                                          static_cast<i16>(part.area.right + frameLeft),
+                                          static_cast<i16>(part.area.bottom + down + frameTop));
     }
-    return false;
 }
 
 /* A frame's glow: how many of its pixels are of the light colours, and
@@ -166,22 +172,43 @@ const Glow &glowOf(u16 shape, u16 frame)
     return glow;
 }
 
-/* A light of strength and colour at screen point x,y. */
-void lightAt(float x, float y, float strength, std::uint32_t colour)
+/* A light of strength and colour round screen point x,y: as far as the
+ * strength's reach, fading smoothly (the square of what is left of the
+ * reach squared), each pixel the brightest light's. */
+void lightAt(float x, float y, float strength, std::uint32_t colour, float reach)
 {
-    if (x < static_cast<float>(-SIDE * CELL) || y < static_cast<float>(-ABOVE * CELL)) {
-        return;
+    strength = std::min(1.0F, strength);
+    const float centreX = x + static_cast<float>(frameLeft);
+    const float centreY = y + static_cast<float>(frameTop);
+    const float across = reach;
+    const float down = reach / 2;
+    const int left = std::max(0, static_cast<int>(centreX - across));
+    const int right = std::min(frameWidth - 1, static_cast<int>(centreX + across));
+    const int top = std::max(0, static_cast<int>(centreY - down));
+    const int bottom = std::min(frameHeight - 1, static_cast<int>(centreY + down));
+    for (int py = top; py <= bottom; py++) {
+        const float dy = (static_cast<float>(py) + 0.5F - centreY) / down;
+        for (int px = left; px <= right; px++) {
+            const float dx = (static_cast<float>(px) + 0.5F - centreX) / across;
+            const float left2 = 1 - ((dx * dx) + (dy * dy));
+            if (left2 <= 0) {
+                continue;
+            }
+            const auto value = static_cast<u8>(strength * left2 * left2 * 255);
+            const std::size_t at = (static_cast<std::size_t>(py) * frameWidth) + px;
+            if (value > light[at]) {
+                light[at] = value;
+                tint[at] = colour;
+            }
+        }
     }
-    /* From the map's corner, not below 0: whole cells. */
-    const int column = static_cast<int>(x + static_cast<float>(SIDE * CELL)) / CELL;
-    const int row = static_cast<int>(y + static_cast<float>(ABOVE * CELL)) / CELL;
-    if (column < 0 || column >= COLUMNS || row < 0 || row >= ROWS) {
-        return;
-    }
-    if (std::min(1.0F, strength) > light[row][column]) {
-        light[row][column] = std::min(1.0F, strength);
-        tint[row][column] = colour;
-    }
+}
+
+/* A picture's light of count glowing pixels. */
+void glowAt(float x, float y, i16 count, std::uint32_t colour)
+{
+    const float strength = static_cast<float>(count) / GLOWING;
+    lightAt(x, y, strength, colour, NEAREST + ((FARTHEST - NEAREST) * std::min(1.0F, strength)));
 }
 
 /* What glows on the screen: the items but the floors and the NPCs, and the
@@ -189,9 +216,7 @@ void lightAt(float x, float y, float strength, std::uint32_t colour)
  * light colours. */
 void glows()
 {
-    for (auto &row : light) {
-        std::fill(std::begin(row), std::end(row), 0.0F);
-    }
+    std::fill_n(light, static_cast<std::size_t>(frameWidth) * frameHeight, static_cast<u8>(0));
     u16 middleX;
     u16 middleY;
     screenToMap(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, &middleX, &middleY);
@@ -211,8 +236,9 @@ void glows()
                 float x;
                 float y;
                 mapToOverlay(itemX[item], itemY[item], itemZ[item], &x, &y);
-                if (x < -SIDE * CELL || x > SCREEN_WIDTH + (SIDE * CELL) || y < -(ABOVE * CELL) - 64 ||
-                    y > SCREEN_HEIGHT + (ABOVE * CELL) + 64) {
+                if (x < static_cast<float>(-frameLeft - 64) ||
+                    x > static_cast<float>(frameWidth - frameLeft + 64) || y < static_cast<float>(-frameTop - 64) ||
+                    y > static_cast<float>(frameHeight - frameTop + 64)) {
                     continue;
                 }
                 const Glow &glow = glowOf(itemShape[item], Item(item).frame());
@@ -220,8 +246,7 @@ void glows()
                     continue;
                 }
                 const bool flipped = (itemFlags[item] & ITEM_FLIPPED) != 0;
-                lightAt(x + static_cast<float>(flipped ? -glow.x : glow.x), y + glow.y,
-                        static_cast<float>(glow.count) / GLOWING, glow.colour);
+                glowAt(x + static_cast<float>(flipped ? -glow.x : glow.x), y + glow.y, glow.count, glow.colour);
             }
         }
     }
@@ -240,55 +265,7 @@ void glows()
         float x;
         float y;
         mapToOverlay(sprite.x, sprite.y, sprite.z, &x, &y);
-        lightAt(x + glow.x, y + glow.y, static_cast<float>(glow.count) / GLOWING, glow.colour);
-    }
-}
-
-/* A cell's light its neighbour's faded, and its colour, when brighter. */
-void take(int row, int column, int fromRow, int fromColumn, float fade)
-{
-    const float faded = light[fromRow][fromColumn] * fade;
-    if (faded > light[row][column]) {
-        light[row][column] = faded;
-        tint[row][column] = tint[fromRow][fromColumn];
-    }
-}
-
-/* The light spread from cell to cell, fading: down and right, then up and
- * left, each cell the brightest of its own and its neighbours' faded. */
-void spread()
-{
-    for (int row = 0; row < ROWS; row++) {
-        for (int column = 0; column < COLUMNS; column++) {
-            if (column > 0) {
-                take(row, column, row, column - 1, FADE);
-            }
-            if (row > 0) {
-                take(row, column, row - 1, column, FADE);
-                if (column > 0) {
-                    take(row, column, row - 1, column - 1, FADE_DIAGONAL);
-                }
-                if (column < COLUMNS - 1) {
-                    take(row, column, row - 1, column + 1, FADE_DIAGONAL);
-                }
-            }
-        }
-    }
-    for (int row = ROWS - 1; row >= 0; row--) {
-        for (int column = COLUMNS - 1; column >= 0; column--) {
-            if (column < COLUMNS - 1) {
-                take(row, column, row, column + 1, FADE);
-            }
-            if (row < ROWS - 1) {
-                take(row, column, row + 1, column, FADE);
-                if (column < COLUMNS - 1) {
-                    take(row, column, row + 1, column + 1, FADE_DIAGONAL);
-                }
-                if (column > 0) {
-                    take(row, column, row + 1, column - 1, FADE_DIAGONAL);
-                }
-            }
-        }
+        glowAt(x + glow.x, y + glow.y, glow.count, glow.colour);
     }
 }
 
@@ -302,59 +279,63 @@ void ownLight()
     float x;
     float y;
     mapToOverlay(npc.centreX(), npc.centreY(), static_cast<i16>(npc.z() + 20), &x, &y);
-    for (int row = 0; row < ROWS; row++) {
-        for (int column = 0; column < COLUMNS; column++) {
-            const float dx = static_cast<float>(((column - SIDE) * CELL) + (CELL / 2)) - x;
-            const float dy = static_cast<float>(((row - ABOVE) * CELL) + (CELL / 2)) - y;
-            /* The reach squared, without a square root. */
-            const float near = 1 - (((dx * dx) + (dy * dy)) / (OWN_REACH * OWN_REACH));
-            if (near > 0 && OWN_LIGHT * near > light[row][column]) {
-                light[row][column] = OWN_LIGHT * near;
-                tint[row][column] = OWN_TINT;
-            }
-        }
-    }
+    lightAt(x, y, OWN_LIGHT, OWN_TINT, OWN_REACH);
 }
 
-}
-
-namespace {
-
-/* The hardware scene's lighting (enhancements.h): the screen multiplied by
- * the light, in its colour (the shade where nothing lights, the art's own
- * where the light is full), and the light's colour added over it as a glow,
- * by the graphics card; the status display's parts left as they are. */
-void hardwareLight()
+/* The pictures over the frame: with the hardware scene (enhancements.h)
+ * the screen multiplied by the light in its colour (the shade where
+ * nothing lights, the art's own where the light is full) and the light's
+ * colour added over it as a glow, by the graphics card; else the shade,
+ * blended. The status display's parts left as they are. */
+void layLight()
 {
-    const float dark = 1 - (SHADE / 255);
-    for (int row = 0; row < ROWS; row++) {
-        for (int column = 0; column < COLUMNS; column++) {
-            const int x = (column - SIDE) * CELL;
-            const int y = (row - ABOVE) * CELL;
-            const std::size_t at = static_cast<std::size_t>(row * COLUMNS) + column;
-            if (x >= 0 && x < SCREEN_WIDTH && overStatus(x, y)) {
-                multiplied[at] = 0xffffffffU;
+    const bool hardware = hardwareSetting();
+    const auto dark = static_cast<int>(255 - SHADE);
+    const std::uint32_t unlit = hardware ? (static_cast<std::uint32_t>(dark) * 0x01010100U) | 0xffU
+                                         : static_cast<std::uint32_t>(SHADE);
+    const std::size_t pixels = static_cast<std::size_t>(frameWidth) * frameHeight;
+    for (std::size_t at = 0; at < pixels; at++) {
+        const int lit = light[at];
+        if (lit == 0) {
+            multiplied[at] = unlit;
+            added[at] = 0;
+            continue;
+        }
+        if (!hardware) {
+            multiplied[at] = static_cast<std::uint32_t>(SHADE * static_cast<float>(255 - lit) / 255);
+            continue;
+        }
+        const int level = dark + (((255 - dark) * lit) / 255);
+        const std::uint32_t colour = tint[at];
+        std::uint32_t times = 0xffU;
+        for (int k = 0; k < 3; k++) {
+            const auto component = static_cast<int>((colour >> (16 - (8 * k))) & 0xffU);
+            const int mixed = 255 - ((lit * TINTED * (255 - component)) / (255 * 256));
+            times |= static_cast<std::uint32_t>((level * mixed) / 255) << (24 - (8 * k));
+        }
+        multiplied[at] = times;
+        added[at] = (colour << 8) | static_cast<std::uint32_t>((lit * GLOW) / 255);
+    }
+    for (int i = 0; i < statusCount; i++) {
+        const Rect &box = statusBoxes[i];
+        for (int y = std::max<int>(0, box.top); y <= std::min(frameHeight - 1, static_cast<int>(box.bottom)); y++) {
+            for (int x = std::max<int>(0, box.left); x <= std::min(frameWidth - 1, static_cast<int>(box.right)); x++) {
+                const std::size_t at = (static_cast<std::size_t>(y) * frameWidth) + x;
+                multiplied[at] = hardware ? 0xffffffffU : 0U;
                 added[at] = 0;
-                continue;
             }
-            const float lit = std::min(1.0F, light[row][column]);
-            const float level = dark + ((1 - dark) * lit);
-            std::uint32_t times = 0xffU;
-            for (int k = 0; k < 3; k++) {
-                const auto component = static_cast<float>((tint[row][column] >> (16 - (8 * k))) & 0xffU) / 255;
-                const float factor = level * (1 - (lit * TINTED) + (lit * TINTED * component));
-                times |= static_cast<std::uint32_t>(std::clamp(factor, 0.0F, 1.0F) * 255) << (24 - (8 * k));
-            }
-            multiplied[at] = times;
-            added[at] = (tint[row][column] << 8) | static_cast<std::uint32_t>(lit * GLOW * 255);
         }
     }
-    const auto left = static_cast<float>(-SIDE * CELL);
-    const auto top = static_cast<float>(-ABOVE * CELL);
-    overlayPictureAs(multiplied, COLUMNS, ROWS, left, top, static_cast<float>(COLUMNS * CELL),
-                     static_cast<float>(ROWS * CELL), OverlayBlend::MULTIPLY, false);
-    overlayPictureAs(added, COLUMNS, ROWS, left, top, static_cast<float>(COLUMNS * CELL),
-                     static_cast<float>(ROWS * CELL), OverlayBlend::ADD, false);
+    const auto left = static_cast<float>(-frameLeft);
+    const auto top = static_cast<float>(-frameTop);
+    const auto width = static_cast<float>(frameWidth);
+    const auto height = static_cast<float>(frameHeight);
+    if (hardware) {
+        overlayPictureAs(multiplied, frameWidth, frameHeight, left, top, width, height, OverlayBlend::MULTIPLY, true);
+        overlayPictureAs(added, frameWidth, frameHeight, left, top, width, height, OverlayBlend::ADD, true);
+    } else {
+        overlayPictureAs(multiplied, frameWidth, frameHeight, left, top, width, height, OverlayBlend::BLEND, true);
+    }
 }
 
 }
@@ -374,24 +355,12 @@ void drawLighting()
     if (!lightingOn || worldActive == 0U) {
         return;
     }
+    frameWidth = std::min<int>(screenWideWidth(), WIDE_FRAME_MOST);
+    frameHeight = std::min<int>(screenWideHeight(), TALL_FRAME_MOST);
+    frameLeft = (frameWidth - SCREEN_WIDTH) / 2;
+    frameTop = (frameHeight - SCREEN_HEIGHT) / 2;
+    findStatus();
     glows();
-    spread();
     ownLight();
-    if (hardwareSetting()) {
-        hardwareLight();
-        return;
-    }
-    for (int row = 0; row < ROWS; row++) {
-        for (int column = 0; column < COLUMNS; column++) {
-            const int x = (column - SIDE) * CELL;
-            const int y = (row - ABOVE) * CELL;
-            float alpha = SHADE * (1 - std::min(1.0F, light[row][column]));
-            if (x >= 0 && x < SCREEN_WIDTH && overStatus(x, y)) {
-                alpha = 0;
-            }
-            shade[(row * COLUMNS) + column] = static_cast<std::uint32_t>(alpha);
-        }
-    }
-    overlayPicture(shade, COLUMNS, ROWS, static_cast<float>(-SIDE * CELL), static_cast<float>(-ABOVE * CELL),
-                   static_cast<float>(COLUMNS * CELL), static_cast<float>(ROWS * CELL));
+    layLight();
 }

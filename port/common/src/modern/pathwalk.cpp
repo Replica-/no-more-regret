@@ -44,6 +44,9 @@ struct Walk {
     u32 waitUntil;
     u8 count;
     ItemPoint points[PATH_POINTS];
+    /* The point clicked (walkMark) and when; markAt 0 for none. */
+    ItemPoint mark;
+    u32 markAt;
 };
 Walk &walk = gameGlobal<Walk>();
 
@@ -366,6 +369,12 @@ void walkToScreen(i16 x, i16 y, bool run)
     walk.item = 0;
     walk.run = run ? 1 : 0;
     goalAtScreen(x, y);
+    /* The point clicked, at his height: the goal less his place's offset
+     * from his centre. */
+    Npc npc(controlledActor);
+    walk.mark = ItemPoint(static_cast<u16>(walk.goalX - (itemX[npc.id] - npc.centreX())),
+                          static_cast<u16>(walk.goalY - (itemY[npc.id] - npc.centreY())), walk.goalZ);
+    walk.markAt = std::max<u32>(1, systemTimer->time());
 }
 
 void walkToItem(u16 item, bool run)
@@ -414,6 +423,24 @@ void walkStop()
 bool walking()
 {
     return walk.active != 0U;
+}
+
+bool walkMark(ItemPoint *point, u32 *age)
+{
+    /* Shown this long after the click, longer while he walks there. */
+    const u32 SHOWN = 40;
+    if (walk.markAt == 0U) {
+        return false;
+    }
+    const u32 since = systemTimer->time() - walk.markAt;
+    const bool going = walk.active != 0U && walk.item == 0U && walk.hold == 0U;
+    if (!going && since > SHOWN) {
+        walk.markAt = 0;
+        return false;
+    }
+    *point = walk.mark;
+    *age = since;
+    return true;
 }
 
 u8 walkPath(const ItemPoint **points)

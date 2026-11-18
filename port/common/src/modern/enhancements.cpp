@@ -9,7 +9,7 @@
 namespace {
 
 bool &hardwareOn = gameSetting<bool>(true);
-bool &pathLineOn = gameSetting<bool>(true);
+bool &pathLineOn = gameSetting<bool>(false);
 bool &pickupsNearOn = gameSetting<bool>(true);
 
 /* An on and off setting of a flag. */
@@ -135,7 +135,7 @@ std::string enhancementsText()
 {
     std::string text;
     text += std::string("hardware=") + (hardwareOn ? "1" : "0") + "\r\n";
-    text += std::string("path_line=") + (pathLineOn ? "1" : "0") + "\r\n";
+    text += std::string("walk_path=") + (pathLineOn ? "1" : "0") + "\r\n";
     text += std::string("pickups_near=") + (pickupsNearOn ? "1" : "0") + "\r\n";
     text += "zoom=" + std::to_string(screenZoom()) + "\r\n";
     return text;
@@ -147,8 +147,12 @@ bool readEnhancement(const std::string &key, const std::string &value)
         hardwareOn = value != "0";
         return true;
     }
-    if (key == "path_line") {
+    if (key == "walk_path") {
         pathLineOn = value != "0";
+        return true;
+    }
+    /* The first name's, when the line was on by default: dropped. */
+    if (key == "path_line") {
         return true;
     }
     if (key == "pickups_near") {

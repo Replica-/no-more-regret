@@ -204,8 +204,47 @@ void healthBars()
     }
 }
 
+/* A circle's 16 points, cosine and sine, for the walk's mark. */
+const float CIRCLE[16][2] = {{1, 0},        {0.9239F, 0.3827F},   {0.7071F, 0.7071F},   {0.3827F, 0.9239F},
+                             {0, 1},        {-0.3827F, 0.9239F},  {-0.7071F, 0.7071F},  {-0.9239F, 0.3827F},
+                             {-1, 0},       {-0.9239F, -0.3827F}, {-0.7071F, -0.7071F}, {-0.3827F, -0.9239F},
+                             {0, -1},       {0.3827F, -0.9239F},  {0.7071F, -0.7071F},  {0.9239F, -0.3827F}};
+const std::uint32_t MARK = 0x50f070U;
+
+/* The point a click walks to (pathwalk.h's walkMark): a ring flat on the
+ * floor, closing in as it appears, and a dot, over a shadow, fading at its
+ * end. */
+void walkMarker()
+{
+    ItemPoint point;
+    u32 age = 0;
+    if (!walkMark(&point, &age)) {
+        return;
+    }
+    float x;
+    float y;
+    mapToOverlay(point.x, point.y, point.z, &x, &y);
+    const float closing = age < 10 ? static_cast<float>(10 - age) / 10 : 0;
+    const float radius = 9 + (8 * closing);
+    const u32 fade = age > 30 && age < 40 ? (40 - age) * 255 / 10 : 255;
+    const auto alpha = static_cast<std::uint32_t>(fade);
+    for (int pass = 0; pass < 2; pass++) {
+        const std::uint32_t colour = pass == 0 ? (alpha * 3 / 4) : ((MARK << 8) | alpha);
+        const float width = pass == 0 ? 3.0F : 1.6F;
+        for (int i = 0; i < 16; i++) {
+            const auto &a = CIRCLE[i];
+            const auto &b = CIRCLE[(i + 1) % 16];
+            /* Flat on the floor: half as high as wide. */
+            overlayLine(x + (a[0] * radius), y + (a[1] * radius / 2), x + (b[0] * radius), y + (b[1] * radius / 2),
+                        width, colour);
+        }
+        overlayDisc(x, y, pass == 0 ? 2.6F : 1.6F, colour);
+    }
+}
+
 void path()
 {
+    walkMarker();
     if (!pathLineSetting()) {
         return;
     }
@@ -224,7 +263,13 @@ void drawHud()
     if (worldActive != 0U) {
         noteSeen();
     }
-    if (drawWheel() || drawMissionMap() || drawColours() || drawDeath()) {
+    if (drawColours()) {
+        return;
+    }
+    /* The port's screens over the game's picture hide the game's pointer:
+     * the arrow over them. */
+    if (drawWheel() || drawMissionMap() || drawDeath()) {
+        drawMenuPointer();
         return;
     }
     drawColoursLayer();
@@ -235,6 +280,11 @@ void drawHud()
         drawPopups();
     }
     if (!pointerMode()) {
+        /* The pointer always shown over the world played (the Silencer
+         * held, hit down, dying), the arrow. */
+        if (pointerSetting() && worldActive != 0U && worldFrozen == 0U) {
+            arrowCursor(static_cast<float>(pointerScreenX()), static_cast<float>(pointerScreenY()), 0);
+        }
         return;
     }
     path();

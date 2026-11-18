@@ -18,8 +18,9 @@
  * (off with the original controls, the tests' screens the art's). */
 [[nodiscard]] bool hardwareSetting();
 void setHardwareSetting(bool on);
-/* The walk's path line (hud.cpp) and the pickups shown over their places
- * (popups.h), on by default. */
+/* The walk's path line (hud.cpp; off by default, a mark shows where a
+ * click walks to) and the pickups shown over their places (popups.h, on by
+ * default). */
 [[nodiscard]] bool pathLineSetting();
 [[nodiscard]] bool pickupsNearSetting();
 /* Their lines of enhanced.cfg, and a line read: true when it was one of

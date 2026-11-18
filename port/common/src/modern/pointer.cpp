@@ -198,6 +198,13 @@ void pointerReach(bool frame)
     }
     if (wanted.left == reach.left && wanted.top == reach.top && wanted.width == reach.width &&
         wanted.height == reach.height) {
+        /* Its limits again: the game sets the screen's (showStatus, the
+         * mouse's reset), which would keep the pointer off the frame's
+         * right and bottom. */
+        if (frame) {
+            inputMouseXRange(0, static_cast<i16>((wanted.width - 1) * 2));
+            inputMouseYRange(0, static_cast<i16>(wanted.height - 1));
+        }
         return;
     }
     /* The pointer kept where it is on the screen. */
