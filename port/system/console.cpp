@@ -4,11 +4,15 @@
  * out without its trailing spaces, and empty rows are left out. Colours have
  * no place on the output and are dropped; the mode goes to video.h. The
  * game's printf (hostPrint) goes to the same output: the game writes with it
- * only after a hostTextAt, which writes the row out first. */
+ * only after a hostTextAt, which writes the row out first. Nothing is
+ * written in a run with a window (window.h's windowRun): the DOS start's
+ * text (the installation, the map patch, the loading bar) is for the
+ * scripts and the tests. */
 #include "conio.h"
 #include "gamememory.h"
 #include "host.h"
 #include "video.h"
+#include "window.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -26,7 +30,7 @@ bool written = false;
 
 void writeRow()
 {
-    if (written) {
+    if (written && !windowRun()) {
         std::string text = row.substr(0, row.find_last_not_of(' ') + 1);
         std::fwrite(text.data(), 1, text.size(), stdout);
         std::fputc('\n', stdout);
@@ -87,8 +91,12 @@ int hostPrint(const char *format, ...)
     const SystemSide systemSide;
     va_list arguments;
     va_start(arguments, format);
-    const int length = std::vprintf(format, arguments);
+    char text[1024];
+    const int length = std::vsnprintf(text, sizeof(text), format, arguments);
     va_end(arguments);
+    if (!windowRun()) {
+        std::fputs(text, stdout);
+    }
     return length;
 }
 
