@@ -639,18 +639,21 @@ bool pointerAim(PointerAim *aim)
     fireOffset(static_cast<u8>(npc.direction()), &offsetX, &offsetY, &offsetZ);
     aim->from = ItemPoint(static_cast<u16>(itemX[npc.id] + offsetX), static_cast<u16>(itemY[npc.id] + offsetY),
                           static_cast<u8>(itemZ[npc.id] + offsetZ));
+    /* The shots' own point (launchAtReticle): under the pointer, at its
+     * height, so the line ends at the reticle. What it meets there, the
+     * item under the pointer, is not in the way. */
     const u16 target = pointerShotTarget();
-    if (target != 0U) {
-        aimPoint(controlledActor, target, &aim->to);
-    } else {
-        ItemPoint pointed;
-        pointerAimPoint(&pointed);
-        aim->to = ItemPoint(pointed.x, pointed.y, aim->from.z);
+    pointerAimPoint(&aim->to);
+    u16 under = 0;
+    if (!itemAt(&under, pointerScreenX(), pointerScreenY()) || under == controlledActor) {
+        under = 0;
     }
     Sweep sweep;
     ItemPoint start = aim->from;
-    aim->blocked = !sweep.test(SHAPE_SHOT, start, aim->to, MOVE_NO_FLOOR, npc.id, target) &&
-                   sweep.hitItem != target && sweep.hitItem != 0U;
+    const bool clear = sweep.test(SHAPE_SHOT, start, aim->to, MOVE_NO_FLOOR, npc.id, target);
+    const int shortBy = std::max({std::abs(static_cast<i16>(sweep.end.x - aim->to.x)),
+                                 std::abs(static_cast<i16>(sweep.end.y - aim->to.y)), std::abs(sweep.end.z - aim->to.z)});
+    aim->blocked = !clear && sweep.hitItem != 0U && sweep.hitItem != target && sweep.hitItem != under && shortBy > 16;
     aim->stop = aim->blocked ? sweep.end : aim->to;
     /* SuperSprite::launch's spread: a tenth of the distance to where the
      * shot is launched at (past the reticle in No Regret), less for some
