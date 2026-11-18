@@ -9,6 +9,7 @@
 #include "world.h"
 #include "pointer.h"
 #include "wheel.h"
+#include "missionmap.h"
 #include "widesides.h"
 #include "waits.h"
 #include "world_game.h"
@@ -2471,6 +2472,11 @@ void WorldGump::keyboardRest(NewGumpEvent *event, u8 canAct, Action action)
     case Action::ITEM_WHEEL:
         if (controllingOwn(canAct)) {
             openWheel(action == Action::WEAPON_WHEEL ? 0 : 1);
+        }
+        break;
+    case Action::MISSION_MAP:
+        if (controllingOwn(canAct)) {
+            openMissionMap();
         }
         break;
     case Action::DROP_WEAPON:

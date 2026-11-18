@@ -160,6 +160,8 @@ enum class Action : u8 {
      * items, to choose from. */
     WEAPON_WHEEL,
     ITEM_WHEEL,
+    /* The port's mission map (modern/missionmap.h). */
+    MISSION_MAP,
     /* The keys of the world's gump while it selects items
      * (WorldGump::handleKeyboard, selectItems). */
     SELECTION_PREVIOUS,

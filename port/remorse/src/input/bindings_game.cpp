@@ -81,6 +81,7 @@ const ActionDefault GAME_ACTION_DEFAULTS[] = {
     /* The port's own: none in the original's layout. */
     {Action::WEAPON_WHEEL, ""},
     {Action::ITEM_WHEEL, ""},
+    {Action::MISSION_MAP, ""},
     {Action::SELECTION_PREVIOUS, ", < wheel_up pad_left lstick_left"},
     {Action::SELECTION_NEXT, ". > s S wheel_down pad_right lstick_right"},
     {Action::SELECTION_CHOOSE, "enter space insert pad_a"},
@@ -105,7 +106,7 @@ const std::size_t GAME_ACTION_DEFAULT_COUNT = std::size(GAME_ACTION_DEFAULTS);
  * kneels, N selects the items about (E chooses among them), F grabs them, G uses the item held,
  * H the medical kit, T the energy cube, Y the targeting reticle, R readies
  * the weapon, Ctrl+G drops the weapon (Ctrl+D rolls), Tab opens the weapon
- * wheel and I the item wheel. The other actions keep
+ * wheel and I the item wheel, M the mission map. The other actions keep
  * the original's inputs. */
 const ActionDefault GAME_MODERN_BINDINGS[] = {
     {Action::MOVE_FORWARD, "up w lstick_up"},
@@ -122,6 +123,7 @@ const ActionDefault GAME_MODERN_BINDINGS[] = {
     {Action::GRAB_ITEMS, "f F"},
     {Action::WEAPON_WHEEL, "tab"},
     {Action::ITEM_WHEEL, "i I"},
+    {Action::MISSION_MAP, "m M"},
     {Action::USE_ITEM, "u U g G pad_x"},
     {Action::USE_MEDKIT, "h H pad_up"},
     {Action::USE_ENERGY_CUBE, "t T"},

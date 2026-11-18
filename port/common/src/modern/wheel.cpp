@@ -3,12 +3,9 @@
 #include "gamestate.h"
 #include "animprim.h"
 #include "bindings.h"
-#include "cafont.h"
 #include "control.h"
 #include "dispatch.h"
 #include "dtable.h"
-#include "gamepal.h"
-#include "gumpshap.h"
 #include "hud.h"
 #include "itemdata.h"
 #include "keyboard.h"
@@ -18,12 +15,10 @@
 #include "pfloat.h"
 #include "screen.h"
 #include "status.h"
-#include "viewport.h"
 #include "world.h"
 
 #include <algorithm>
 #include <cstdio>
-#include <iterator>
 
 namespace {
 
@@ -271,27 +266,17 @@ void sector(float a0, float a1, float r0, float r1, std::uint32_t colour)
     }
 }
 
-/* The pictures and the words: drawn by the game into pixels of its own
- * (the game's fonts and gump shapes), then given to the overlay in the
- * palette's colours. */
-constexpr std::size_t PIXELS = static_cast<std::size_t>(SCREEN_WIDTH) * SCREEN_HEIGHT;
-u8 canvas[PIXELS];
-std::uint32_t picture[PIXELS];
+/* The fonts of the title and of the names. */
+constexpr i16 TITLE_FONT = 14;
+constexpr i16 NAME_FONT = 7;
 
-void centredText(CAFont &font, i16 x, i16 y, const char *text)
-{
-    font.draw(static_cast<i16>(x - (font.textWidth(text) / 2)), y, "%s", text);
-}
-
+/* The pictures and the words (hud.h's words). */
 void paintWords(const WheelGump &wheel)
 {
-    std::fill(std::begin(canvas), std::end(canvas), TRANSPARENT);
-    Viewport view(VIEWPORT_LARGE, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, canvas);
-    const DrawTarget target(&view);
-    CAFont title(14);
-    CAFont names(7);
-    centredText(title, static_cast<i16>(MIDDLE_X), static_cast<i16>(MIDDLE_Y - 26),
-                wheel.kind == 0 ? "WEAPONS" : "ITEMS");
+    wordsBegin();
+    const auto middleX = static_cast<i16>(MIDDLE_X);
+    const auto middleY = static_cast<i16>(MIDDLE_Y);
+    wordsText(TITLE_FONT, middleX, static_cast<i16>(middleY - 26), wheel.kind == 0 ? "WEAPONS" : "ITEMS", 0);
     const float span = 360.0F / static_cast<float>(std::max<i16>(wheel.count, 1));
     for (i16 i = 0; i < wheel.count; i++) {
         u16 shape;
@@ -301,36 +286,27 @@ void paintWords(const WheelGump &wheel)
         float x;
         float y;
         around(middle, (INNER + OUTER) / 2, &x, &y);
-        GumpShape icon(shape);
-        icon.setFrame(frame);
-        const Rect area = icon.dimensions();
-        icon.draw(static_cast<u16>(static_cast<i16>(x) - ((area.left + area.right) / 2)),
-                  static_cast<u16>(static_cast<i16>(y) - ((area.top + area.bottom) / 2)));
+        wordsPicture(shape, frame, static_cast<i16>(x), static_cast<i16>(y));
         if (name == nullptr) {
             continue;
         }
+        /* The names round the outside: left of the wheel they end at it,
+         * right of it they start from it. */
         float nx;
         float ny;
         around(middle, OUTER + 10, &nx, &ny);
-        const i16 width = names.textWidth(name);
-        i16 left = static_cast<i16>(nx);
-        if (nx < MIDDLE_X - 20) {
-            left = static_cast<i16>(left - width);
-        } else if (nx <= MIDDLE_X + 20) {
-            left = static_cast<i16>(left - (width / 2));
-        }
-        const i16 top = static_cast<i16>(ny < MIDDLE_Y ? ny - 10 : ny);
-        names.draw(left, top, "%s", name);
+        const i16 align = nx < MIDDLE_X - 20 ? -1 : nx <= MIDDLE_X + 20 ? 0 : 1;
+        wordsText(NAME_FONT, static_cast<i16>(nx), static_cast<i16>(ny < MIDDLE_Y ? ny - 10 : ny), name, align);
     }
     if (wheel.count == 0) {
-        centredText(names, static_cast<i16>(MIDDLE_X), static_cast<i16>(MIDDLE_Y), "NONE CARRIED");
+        wordsText(NAME_FONT, middleX, middleY, "NONE CARRIED", 0);
     } else if (wheel.lit >= 0) {
         const Item item(wheel.entries[wheel.lit].item);
         u16 shape;
         u16 frame;
         const char *name = itemInfo(item.id, &shape, &frame);
         if (name != nullptr) {
-            centredText(names, static_cast<i16>(MIDDLE_X), static_cast<i16>(MIDDLE_Y - 4), name);
+            wordsText(NAME_FONT, middleX, static_cast<i16>(middleY - 4), name, 0);
         }
         char detail[40] = "";
         if (wheel.kind == 0) {
@@ -344,21 +320,12 @@ void paintWords(const WheelGump &wheel)
             std::snprintf(detail, sizeof detail, "X%d", item.quality());
         }
         if (detail[0] != '\0') {
-            centredText(names, static_cast<i16>(MIDDLE_X), static_cast<i16>(MIDDLE_Y + 12), detail);
+            wordsText(NAME_FONT, middleX, static_cast<i16>(middleY + 12), detail, 0);
         }
     }
-    centredText(names, static_cast<i16>(MIDDLE_X), static_cast<i16>(MIDDLE_Y + OUTER + 34),
-                "CLICK OR ENTER CHOOSES   ARROWS MOVE   ESC CLOSES");
-    std::fill(std::begin(picture), std::end(picture), 0U);
-    const RGB *colours = gamePalette->data.get();
-    for (std::size_t i = 0; i < PIXELS; i++) {
-        if (canvas[i] != TRANSPARENT) {
-            const RGB &c = colours[canvas[i]];
-            picture[i] = (static_cast<std::uint32_t>(c.red) << 26) | (static_cast<std::uint32_t>(c.green) << 18) |
-                         (static_cast<std::uint32_t>(c.blue) << 10) | 0xffU;
-        }
-    }
-    overlayPicture(picture, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    wordsText(NAME_FONT, middleX, static_cast<i16>(MIDDLE_Y + OUTER + 34),
+              "CLICK OR ENTER CHOOSES   ARROWS MOVE   ESC CLOSES", 0);
+    wordsEnd();
 }
 
 }

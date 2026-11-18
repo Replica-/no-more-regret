@@ -117,6 +117,7 @@ constexpr ActionInfo ACTION_INFOS[] = {
     {Action::GRAB_ITEMS, "grab_items", Domain::WORLD},
     {Action::WEAPON_WHEEL, "weapon_wheel", Domain::WORLD},
     {Action::ITEM_WHEEL, "item_wheel", Domain::WORLD},
+    {Action::MISSION_MAP, "mission_map", Domain::WORLD},
     {Action::SELECTION_PREVIOUS, "selection_previous", Domain::SELECTION},
     {Action::SELECTION_NEXT, "selection_next", Domain::SELECTION},
     {Action::SELECTION_CHOOSE, "selection_choose", Domain::SELECTION},

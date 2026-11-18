@@ -2,8 +2,11 @@
 #include "hud.h"
 #include "gamestate.h"
 #include "camera.h"
+#include "cafont.h"
 #include "control.h"
 #include "crusys.h"
+#include "gamepal.h"
+#include "gumpshap.h"
 #include "itemdata.h"
 #include "itemutil.h"
 #include "npc.h"
@@ -11,13 +14,17 @@
 #include "pathwalk.h"
 #include "pfloat.h"
 #include "pointer.h"
+#include "screen.h"
 #include "systimer.h"
 #include "wheel.h"
+#include "missionmap.h"
 #include "type.h"
+#include "viewport.h"
 
 #include <algorithm>
 #include <climits>
 #include <cstdlib>
+#include <iterator>
 
 namespace {
 
@@ -145,7 +152,10 @@ void path()
 
 void drawHud()
 {
-    if (drawWheel()) {
+    if (worldActive != 0U) {
+        noteSeen();
+    }
+    if (drawWheel() || drawMissionMap()) {
         return;
     }
     if (worldActive != 0U) {
@@ -170,6 +180,58 @@ void drawHud()
     }
 }
 
+/* wordsBegin's pixels, and the picture wordsEnd makes of them. */
+constexpr std::size_t PIXELS = static_cast<std::size_t>(SCREEN_WIDTH) * SCREEN_HEIGHT;
+u8 canvas[PIXELS];
+std::uint32_t picture[PIXELS];
+
+}
+
+void wordsBegin()
+{
+    std::fill(std::begin(canvas), std::end(canvas), TRANSPARENT);
+}
+
+i16 wordsWidth(i16 font, const char *text)
+{
+    CAFont face(font);
+    return face.textWidth(text);
+}
+
+void wordsText(i16 font, i16 x, i16 y, const char *text, i16 align)
+{
+    Viewport view(VIEWPORT_LARGE, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, canvas);
+    const DrawTarget target(&view);
+    CAFont face(font);
+    const i16 width = face.textWidth(text);
+    const i16 left = align < 0 ? static_cast<i16>(x - width) : align == 0 ? static_cast<i16>(x - (width / 2)) : x;
+    face.draw(left, y, "%s", text);
+}
+
+void wordsPicture(u16 shape, u16 frame, i16 x, i16 y)
+{
+    Viewport view(VIEWPORT_LARGE, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, canvas);
+    const DrawTarget target(&view);
+    GumpShape icon(shape);
+    icon.setFrame(frame);
+    const Rect area = icon.dimensions();
+    icon.draw(static_cast<u16>(x - ((area.left + area.right) / 2)), static_cast<u16>(y - ((area.top + area.bottom) / 2)));
+}
+
+void wordsEnd()
+{
+    const RGB *colours = gamePalette->data.get();
+    for (std::size_t i = 0; i < PIXELS; i++) {
+        if (canvas[i] == TRANSPARENT) {
+            picture[i] = 0;
+            continue;
+        }
+        /* The palette's 6 bits a colour. */
+        const RGB &c = colours[canvas[i]];
+        picture[i] = (static_cast<std::uint32_t>(c.red) << 26) | (static_cast<std::uint32_t>(c.green) << 18) |
+                     (static_cast<std::uint32_t>(c.blue) << 10) | 0xffU;
+    }
+    overlayPicture(picture, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 }
 
 void startHud()
