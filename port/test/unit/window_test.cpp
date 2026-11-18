@@ -591,17 +591,22 @@ int checkWindow(int, char **)
     }
     check(spaces >= 2 && spaces <= 4, "space held 0.7 s: " + std::to_string(spaces));
 
-    /* The mouse: SDL's relative motion at a frame as mickeys, which the
-     * driver moves the cursor by at the game's speed, 3 mickeys across and
-     * 16 down to 8 pixels; the rest of a pixel, and of a mickey, kept. */
+    /* The mouse: SDL's relative motion at a frame as mickeys, as many as
+     * move the cursor as far over the picture (the motion below given in
+     * mickeys, turned into the window's units), which the driver moves the
+     * cursor by at the game's speed, 3 mickeys across and 16 down to 8
+     * pixels; the rest of a pixel, and of a mickey, kept. */
     inputMouseStart(mouseHandler);
     inputMouseXRange(0, 1278);
     inputMouseYRange(0, 479);
     auto motion = [](float x, float y) {
+        float across = 0;
+        float down = 0;
+        windowPictureScale(across, down);
         SDL_Event event{};
         event.type = SDL_EVENT_MOUSE_MOTION;
-        event.motion.xrel = x;
-        event.motion.yrel = y;
+        event.motion.xrel = x * across / (2 * mickeysAcross());
+        event.motion.yrel = y * down / mickeysDown();
         SDL_PushEvent(&event);
     };
     auto button = [](Uint8 which, bool down) {

@@ -22,4 +22,8 @@ void mouseInput(i16 x, i16 y, u16 buttons);
 /* The same for the mouse's motion in mickeys, which the driver turns into
  * pixels at its speed (AX=0Fh). */
 void mouseMotion(i16 mickeysX, i16 mickeysY, u16 buttons);
+/* The mickeys that move the cursor a pixel of the driver's at its speed:
+ * across and down. */
+float mickeysAcross();
+float mickeysDown();
 #endif

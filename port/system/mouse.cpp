@@ -110,6 +110,16 @@ void mouseMotion(i16 mickeysX, i16 mickeysY, u16 buttons)
     requestIrq(12);
 }
 
+float mickeysAcross()
+{
+    return static_cast<float>(speedX) / 8;
+}
+
+float mickeysDown()
+{
+    return static_cast<float>(speedY) / 8;
+}
+
 /* The mouse's line: one event, and the line's end. The events' bits (the
  * driver's AX): moved, then each of the left, right and middle buttons down
  * and up. */

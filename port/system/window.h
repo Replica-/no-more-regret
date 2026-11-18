@@ -49,6 +49,10 @@ bool windowFrameUnshown();
 /* The window's picture of the screen now, as a frame draws it: width x
  * height pixels of red, green and blue; false without a window. */
 bool windowPicture(std::vector<u8> &rgb, int &width, int &height);
+/* The window's units of the mouse's motion a pixel of the picture shown
+ * (the last frame's), across and down: the motion's mickeys are those
+ * pixels' at the driver's speed (mousedrv.h). */
+void windowPictureScale(float &across, float &down);
 /* The sound's output (audio.cpp): bytes of stereo samples, 16-bit signed or
  * 8-bit unsigned, at rate, to SDL3's audio when the run has a window. The
  * stream is of 16-bit samples, the 8-bit ones made so: the depth may change

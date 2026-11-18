@@ -40,9 +40,10 @@
  *
  * The mouse is the window's while it is captured: SDL's relative mode
  * hides the host's cursor (the game draws its own) and keeps the mouse in
- * the window. Its motion goes to the driver in mickeys, a unit of SDL's
- * relative motion a mickey, which the driver moves the cursor by at the
- * game's speed (mousedrv.h); the motion of a frame is one event of the
+ * the window. Its motion goes to the driver in mickeys, as many as move
+ * the game's cursor as far as the host's would have gone over the picture
+ * (at the game's speed, mousedrv.h; the driver's pixels across are half
+ * the screen's); the motion of a frame is one event of the
  * mouse, and a button going down or up one more with the motion before it.
  * The window captures the mouse when it opens; Control+F10 frees it, and a
  * click in the window captures it again, a click the game does not get.
@@ -150,6 +151,11 @@ std::mutex frameLock;
 Frame handed;
 bool fresh = false;
 std::atomic<bool> frameWoken{false};
+/* The window's pixels of a pixel of the picture shown, across and down
+ * (the window thread's, the mouse's motion turned into the game's by the
+ * game thread). */
+std::atomic<float> pictureScaleX{1};
+std::atomic<float> pictureScaleY{1};
 
 /* The input the window thread hands the game thread for its next frame, in
  * the order of the window's events: a scan code to the keyboard, the
@@ -409,6 +415,9 @@ void showIcon()
 /* The window, on the window thread, the mouse captured. */
 void openWindow()
 {
+    /* The captured mouse's motion as the host's pointer moves: its speed
+     * and acceleration. */
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SYSTEM_SCALE, "1");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         failure("no window");
     }
@@ -1235,6 +1244,8 @@ void drawScreen(bool withStatus)
         failure("no picture");
     }
     const SDL_FRect place = picturePlace(framePlace(width, height, view.frameWidth), view);
+    pictureScaleX = place.w / static_cast<float>(view.width) / SDL_GetWindowPixelDensity(window);
+    pictureScaleY = place.h / static_cast<float>(view.height) / SDL_GetWindowPixelDensity(window);
     /* A whole multiple both ways each pixel's own; else (200 rows as 240,
      * a size between) SDL's scaling for pixel art, sharp but even. */
     const int w = static_cast<int>(place.w);
@@ -1276,8 +1287,8 @@ void takeInput()
             }
             break;
         case Input::MOTION:
-            motionX += input.x;
-            motionY += input.y;
+            motionX += input.x / pictureScaleX * 2 * mickeysAcross();
+            motionY += input.y / pictureScaleY * mickeysDown();
             break;
         case Input::BUTTONS:
             mouseButtons = input.buttons;
@@ -1697,6 +1708,12 @@ bool windowFrame()
 bool windowFrameUnshown()
 {
     return frameOfWindow(false);
+}
+
+void windowPictureScale(float &across, float &down)
+{
+    across = pictureScaleX;
+    down = pictureScaleY;
 }
 
 bool windowPicture(std::vector<u8> &rgb, int &width, int &height)
