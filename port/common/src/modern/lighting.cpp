@@ -2,6 +2,7 @@
 #include "lighting.h"
 #include "gamestate.h"
 #include "control.h"
+#include "enhancements.h"
 #include "crusys.h"
 #include "gamepal.h"
 #include "hud.h"
@@ -65,7 +66,18 @@ constexpr std::array<u8, 256> LIGHT_COLOURS = [] {
 bool &lightingOn = gameSetting<bool>(false);
 
 float light[ROWS][COLUMNS];
+/* Each cell's light's colour (0xRRGGBB): its brightest source's. */
+std::uint32_t tint[ROWS][COLUMNS];
 std::uint32_t shade[ROWS * COLUMNS];
+/* The hardware scene's: the light the screen is multiplied by, and the
+ * glow added to it. */
+std::uint32_t multiplied[ROWS * COLUMNS];
+std::uint32_t added[ROWS * COLUMNS];
+/* The Silencer's own light's colour, a warm white; how much of the light's
+ * colour tints the light, and how much of it is added as a glow. */
+const std::uint32_t OWN_TINT = 0xfff2e0;
+const float TINTED = 0.3F;
+const float GLOW = 0.18F;
 
 /* The status display's parts, which are not the world's: where the screen
  * has them, or moved down to the frame's bottom (widesides.h). */
@@ -92,6 +104,8 @@ struct Glow {
     i16 count;
     i16 x;
     i16 y;
+    /* The glowing pixels' colour on average, 0xRRGGBB. */
+    std::uint32_t colour;
 };
 const int GLOWS = 4096;
 Glow glowCache[GLOWS];
@@ -110,7 +124,7 @@ const Glow &glowOf(u16 shape, u16 frame)
     }
     /* Not kept: drawn alone and counted, in its first slot. */
     Glow &glow = glowCache[slot];
-    glow = Glow{key + 1, 0, 0, 0};
+    glow = Glow{key + 1, 0, 0, 0, 0};
     ShapeFrame *image = cachedShapeFrame(shape, frame);
     if (image == nullptr) {
         return glow;
@@ -126,11 +140,16 @@ const Glow &glowOf(u16 shape, u16 frame)
     view.drawShape(static_cast<i16>(image->xOffset), static_cast<i16>(image->yOffset), image);
     std::int32_t sumX = 0;
     std::int32_t sumY = 0;
+    std::int32_t sums[3] = {0, 0, 0};
+    const RGB *palette = gamePalette->data.get();
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             const u8 pixel = scratch[(y * SCRATCH) + x];
             if (pixel != TRANSPARENT && LIGHT_COLOURS[pixel] != 0U) {
                 glow.count++;
+                sums[0] += palette[pixel].red;
+                sums[1] += palette[pixel].green;
+                sums[2] += palette[pixel].blue;
                 sumX += x - image->xOffset;
                 sumY += y - image->yOffset;
             }
@@ -139,12 +158,16 @@ const Glow &glowOf(u16 shape, u16 frame)
     if (glow.count != 0) {
         glow.x = static_cast<i16>(sumX / glow.count);
         glow.y = static_cast<i16>(sumY / glow.count);
+        for (int k = 0; k < 3; k++) {
+            const auto average = static_cast<std::uint32_t>(((sums[k] / glow.count) * 255) / 63);
+            glow.colour |= average << (16 - (8 * k));
+        }
     }
     return glow;
 }
 
-/* A light of strength at screen point x,y. */
-void lightAt(float x, float y, float strength)
+/* A light of strength and colour at screen point x,y. */
+void lightAt(float x, float y, float strength, std::uint32_t colour)
 {
     if (x < static_cast<float>(-SIDE * CELL) || y < static_cast<float>(-ABOVE * CELL)) {
         return;
@@ -155,7 +178,10 @@ void lightAt(float x, float y, float strength)
     if (column < 0 || column >= COLUMNS || row < 0 || row >= ROWS) {
         return;
     }
-    light[row][column] = std::max(light[row][column], std::min(1.0F, strength));
+    if (std::min(1.0F, strength) > light[row][column]) {
+        light[row][column] = std::min(1.0F, strength);
+        tint[row][column] = colour;
+    }
 }
 
 /* What glows on the screen: the items but the floors and the NPCs, and the
@@ -195,7 +221,7 @@ void glows()
                 }
                 const bool flipped = (itemFlags[item] & ITEM_FLIPPED) != 0;
                 lightAt(x + static_cast<float>(flipped ? -glow.x : glow.x), y + glow.y,
-                        static_cast<float>(glow.count) / GLOWING);
+                        static_cast<float>(glow.count) / GLOWING, glow.colour);
             }
         }
     }
@@ -214,7 +240,17 @@ void glows()
         float x;
         float y;
         mapToOverlay(sprite.x, sprite.y, sprite.z, &x, &y);
-        lightAt(x + glow.x, y + glow.y, static_cast<float>(glow.count) / GLOWING);
+        lightAt(x + glow.x, y + glow.y, static_cast<float>(glow.count) / GLOWING, glow.colour);
+    }
+}
+
+/* A cell's light its neighbour's faded, and its colour, when brighter. */
+void take(int row, int column, int fromRow, int fromColumn, float fade)
+{
+    const float faded = light[fromRow][fromColumn] * fade;
+    if (faded > light[row][column]) {
+        light[row][column] = faded;
+        tint[row][column] = tint[fromRow][fromColumn];
     }
 }
 
@@ -224,34 +260,32 @@ void spread()
 {
     for (int row = 0; row < ROWS; row++) {
         for (int column = 0; column < COLUMNS; column++) {
-            float &here = light[row][column];
             if (column > 0) {
-                here = std::max(here, light[row][column - 1] * FADE);
+                take(row, column, row, column - 1, FADE);
             }
             if (row > 0) {
-                here = std::max(here, light[row - 1][column] * FADE);
+                take(row, column, row - 1, column, FADE);
                 if (column > 0) {
-                    here = std::max(here, light[row - 1][column - 1] * FADE_DIAGONAL);
+                    take(row, column, row - 1, column - 1, FADE_DIAGONAL);
                 }
                 if (column < COLUMNS - 1) {
-                    here = std::max(here, light[row - 1][column + 1] * FADE_DIAGONAL);
+                    take(row, column, row - 1, column + 1, FADE_DIAGONAL);
                 }
             }
         }
     }
     for (int row = ROWS - 1; row >= 0; row--) {
         for (int column = COLUMNS - 1; column >= 0; column--) {
-            float &here = light[row][column];
             if (column < COLUMNS - 1) {
-                here = std::max(here, light[row][column + 1] * FADE);
+                take(row, column, row, column + 1, FADE);
             }
             if (row < ROWS - 1) {
-                here = std::max(here, light[row + 1][column] * FADE);
+                take(row, column, row + 1, column, FADE);
                 if (column < COLUMNS - 1) {
-                    here = std::max(here, light[row + 1][column + 1] * FADE_DIAGONAL);
+                    take(row, column, row + 1, column + 1, FADE_DIAGONAL);
                 }
                 if (column > 0) {
-                    here = std::max(here, light[row + 1][column - 1] * FADE_DIAGONAL);
+                    take(row, column, row + 1, column - 1, FADE_DIAGONAL);
                 }
             }
         }
@@ -274,11 +308,53 @@ void ownLight()
             const float dy = static_cast<float>(((row - ABOVE) * CELL) + (CELL / 2)) - y;
             /* The reach squared, without a square root. */
             const float near = 1 - (((dx * dx) + (dy * dy)) / (OWN_REACH * OWN_REACH));
-            if (near > 0) {
-                light[row][column] = std::max(light[row][column], OWN_LIGHT * near);
+            if (near > 0 && OWN_LIGHT * near > light[row][column]) {
+                light[row][column] = OWN_LIGHT * near;
+                tint[row][column] = OWN_TINT;
             }
         }
     }
+}
+
+}
+
+namespace {
+
+/* The hardware scene's lighting (enhancements.h): the screen multiplied by
+ * the light, in its colour (the shade where nothing lights, the art's own
+ * where the light is full), and the light's colour added over it as a glow,
+ * by the graphics card; the status display's parts left as they are. */
+void hardwareLight()
+{
+    const float dark = 1 - (SHADE / 255);
+    for (int row = 0; row < ROWS; row++) {
+        for (int column = 0; column < COLUMNS; column++) {
+            const int x = (column - SIDE) * CELL;
+            const int y = (row - ABOVE) * CELL;
+            const std::size_t at = static_cast<std::size_t>(row * COLUMNS) + column;
+            if (x >= 0 && x < SCREEN_WIDTH && overStatus(x, y)) {
+                multiplied[at] = 0xffffffffU;
+                added[at] = 0;
+                continue;
+            }
+            const float lit = std::min(1.0F, light[row][column]);
+            const float level = dark + ((1 - dark) * lit);
+            std::uint32_t times = 0xffU;
+            for (int k = 0; k < 3; k++) {
+                const auto component = static_cast<float>((tint[row][column] >> (16 - (8 * k))) & 0xffU) / 255;
+                const float factor = level * (1 - (lit * TINTED) + (lit * TINTED * component));
+                times |= static_cast<std::uint32_t>(std::clamp(factor, 0.0F, 1.0F) * 255) << (24 - (8 * k));
+            }
+            multiplied[at] = times;
+            added[at] = (tint[row][column] << 8) | static_cast<std::uint32_t>(lit * GLOW * 255);
+        }
+    }
+    const auto left = static_cast<float>(-SIDE * CELL);
+    const auto top = static_cast<float>(-ABOVE * CELL);
+    overlayPictureAs(multiplied, COLUMNS, ROWS, left, top, static_cast<float>(COLUMNS * CELL),
+                     static_cast<float>(ROWS * CELL), OverlayBlend::MULTIPLY, false);
+    overlayPictureAs(added, COLUMNS, ROWS, left, top, static_cast<float>(COLUMNS * CELL),
+                     static_cast<float>(ROWS * CELL), OverlayBlend::ADD, false);
 }
 
 }
@@ -301,6 +377,10 @@ void drawLighting()
     glows();
     spread();
     ownLight();
+    if (hardwareSetting()) {
+        hardwareLight();
+        return;
+    }
     for (int row = 0; row < ROWS; row++) {
         for (int column = 0; column < COLUMNS; column++) {
             const int x = (column - SIDE) * CELL;

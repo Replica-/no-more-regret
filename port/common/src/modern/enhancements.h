@@ -13,6 +13,11 @@
 /* The page's columns. */
 [[nodiscard]] SettingColumns enhancementColumns();
 
+/* The hardware scene: the Silencer's colours and the lighting drawn by
+ * the graphics card in full colour (colours.h, lighting.h), on by default
+ * (off with the original controls, the tests' screens the art's). */
+[[nodiscard]] bool hardwareSetting();
+void setHardwareSetting(bool on);
 /* The walk's path line (hud.cpp) and the pickups shown over their places
  * (popups.h), on by default. */
 [[nodiscard]] bool pathLineSetting();

@@ -227,6 +227,7 @@ void drawHud()
     if (drawWheel() || drawMissionMap() || drawColours() || drawDeath()) {
         return;
     }
+    drawColoursLayer();
     drawLighting();
     drawBlood();
     if (worldActive != 0U) {

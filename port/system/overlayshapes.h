@@ -18,10 +18,13 @@ struct OverlayShape {
     float width = 0;
     float radius = 0;
     std::uint32_t colour = 0;
-    /* PICTURE's pixels: from first in Overlay's pixels, w x h. */
+    /* PICTURE's pixels: from first in Overlay's pixels, w x h; how it is
+     * laid over (overlay.h's OverlayBlend) and scaled. */
     std::size_t first = 0;
     int w = 0;
     int h = 0;
+    u8 blend = 0;
+    bool sharp = false;
 };
 
 struct Overlay {

@@ -58,6 +58,12 @@ void overlayTriangle(float x0, float y0, float x1, float y1, float x2, float y2,
 
 void overlayPicture(const std::uint32_t *pixels, int width, int height, float x, float y, float w, float h)
 {
+    overlayPictureAs(pixels, width, height, x, y, w, h, OverlayBlend::BLEND, false);
+}
+
+void overlayPictureAs(const std::uint32_t *pixels, int width, int height, float x, float y, float w, float h,
+                      OverlayBlend blend, bool sharp)
+{
     const SystemSide systemSide;
     if (gathering == nullptr || width <= 0 || height <= 0) {
         return;
@@ -71,7 +77,9 @@ void overlayPicture(const std::uint32_t *pixels, int width, int height, float x,
          .colour = 0xffffffff,
          .first = first,
          .w = width,
-         .h = height});
+         .h = height,
+         .blend = static_cast<u8>(blend),
+         .sharp = sharp});
 }
 
 void gatherOverlay(Overlay &overlay)
@@ -197,6 +205,19 @@ void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int le
                     const int v = std::min(shape.h - 1, static_cast<int>((py - y0) * shape.h / shape.y[1]));
                     colour = overlay.pixels[shape.first + (static_cast<std::size_t>(v) * shape.w) + u];
                     coverage = 1;
+                    if (shape.blend == static_cast<u8>(OverlayBlend::MULTIPLY)) {
+                        for (int k = 0; k < 3; k++) {
+                            pixel[k] = static_cast<u8>((pixel[k] * ((colour >> (24 - (8 * k))) & 0xffU)) / 255);
+                        }
+                        coverage = 0;
+                    } else if (shape.blend == static_cast<u8>(OverlayBlend::ADD)) {
+                        const std::uint32_t alpha = colour & 0xffU;
+                        for (int k = 0; k < 3; k++) {
+                            const std::uint32_t add = (((colour >> (24 - (8 * k))) & 0xffU) * alpha) / 255;
+                            pixel[k] = static_cast<u8>(std::min<std::uint32_t>(255, pixel[k] + add));
+                        }
+                        coverage = 0;
+                    }
                     break;
                 }
                 }

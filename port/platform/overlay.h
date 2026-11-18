@@ -30,4 +30,11 @@ void overlayTriangle(float x0, float y0, float x1, float y1, float x2, float y2,
 /* A picture of width x height pixels of 0xRRGGBBAA, drawn w x h from x,y;
  * taken at once. */
 void overlayPicture(const std::uint32_t *pixels, int width, int height, float x, float y, float w, float h);
+/* How a picture is laid over the screen (the port's hardware scene): blended
+ * by its alpha, multiplying the screen's colours by its own (its alpha not
+ * used), or added to them by its alpha; scaled smooth, or sharp (each pixel
+ * a block). */
+enum class OverlayBlend : std::uint8_t { BLEND, MULTIPLY, ADD };
+void overlayPictureAs(const std::uint32_t *pixels, int width, int height, float x, float y, float w, float h,
+                      OverlayBlend blend, bool sharp);
 #endif

@@ -26,6 +26,11 @@ void setColoursText(const std::string &text);
  * x,y, mirrored or not (DL_ItemNode::draw); false when they are the game's
  * own, which the caller draws. */
 bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrored);
+/* With the hardware scene (enhancements.h), drawInColours draws him in the
+ * game's colours and keeps his pixels; this draws those still showing over
+ * the screen in his colours exactly, as the screen's palette has them now
+ * (its fades), by the graphics card (hud.cpp, under the lighting). */
+void drawColoursLayer();
 /* Opens the choice over the world; the choice as a gump of its own (the
  * settings' button opens it); draws it while it is open, true then
  * (hud.cpp). */

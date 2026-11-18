@@ -81,6 +81,7 @@
 #include "input.h"
 #include "video.h"
 #include "overlayshapes.h"
+#include "overlay.h"
 #include "portversion.h"
 #include "profile.h"
 #include "screen.h"
@@ -1224,8 +1225,10 @@ void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenVie
             }
             SDL_UpdateTexture(picture, nullptr, &overlay.pixels[shape.first],
                               shape.w * static_cast<int>(sizeof(std::uint32_t)));
-            SDL_SetTextureBlendMode(picture, SDL_BLENDMODE_BLEND);
-            SDL_SetTextureScaleMode(picture, SDL_SCALEMODE_LINEAR);
+            SDL_SetTextureBlendMode(picture, shape.blend == static_cast<u8>(OverlayBlend::MULTIPLY) ? SDL_BLENDMODE_MOD
+                                             : shape.blend == static_cast<u8>(OverlayBlend::ADD) ? SDL_BLENDMODE_ADD
+                                                                                                 : SDL_BLENDMODE_BLEND);
+            SDL_SetTextureScaleMode(picture, shape.sharp ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
             const SDL_FPoint a = at(shape.x[0], shape.y[0]);
             const SDL_FRect box{a.x, a.y, shape.x[1] * scale, shape.y[1] * scale};
             SDL_RenderTexture(renderer, picture, nullptr, &box);

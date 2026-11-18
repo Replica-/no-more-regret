@@ -194,6 +194,7 @@ void readEnhancedOptions()
     setPointerSetting(!original);
     /* The lighting too: the tests' screens are the art's own. */
     setLightingSetting(!original);
+    setHardwareSetting(!original);
     setKeyPreset(original ? KeyPreset::ORIGINAL : KeyPreset::MODERN);
     /* The wide screen too: the world beside the 640x480 screen. */
     screenSetWide(original ? 0 : 1);

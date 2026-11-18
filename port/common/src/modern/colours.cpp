@@ -5,10 +5,12 @@
 #include "animprim.h"
 #include "bindings.h"
 #include "control.h"
+#include "crusys.h"
 #include "dispatch.h"
 #include "dlitem.h"
 #include "drawframe.h"
 #include "enhanced.h"
+#include "enhancements.h"
 #include "gamepal.h"
 #include "hud.h"
 #include "keyboard.h"
@@ -605,6 +607,58 @@ void ColoursGump::draw() const
     preview();
 }
 
+/* The hardware scene's layer: for each pixel of the screen the Silencer
+ * was drawn at, his palette entry and 1 (0 for none), and those pixels. */
+u16 layerMap[SCREEN_WIDTH * SCREEN_HEIGHT];
+const std::size_t LAYER_MOST = 32768;
+u32 layerPixels[LAYER_MOST];
+std::size_t layerCount = 0;
+/* The layer's picture, its box's pixels (at most LAYER_SIDE square). */
+const int LAYER_SIDE = 320;
+std::uint32_t layerPicture[LAYER_SIDE * LAYER_SIDE];
+
+void clearLayer()
+{
+    for (std::size_t i = 0; i < layerCount; i++) {
+        layerMap[layerPixels[i]] = 0;
+    }
+    layerCount = 0;
+}
+
+/* Each palette entry of a ramp in the colours as red, green, blue and an
+ * alpha of FFh, the others 0: the shade the table gives, but the colour
+ * itself, not the palette's nearest; scaled as the screen's palette is
+ * against the game's (its fades). */
+void exactColours(std::uint32_t *out)
+{
+    u8 now[256 * 3];
+    screenGetColors(0, 256, now);
+    const RGB *palette = gamePalette->data.get();
+    for (int i = 0; i < 256; i++) {
+        const int r = full(palette[i].red);
+        const int g = full(palette[i].green);
+        const int b = full(palette[i].blue);
+        const int ramp = rampOf(r, g, b);
+        if (ramp < 0) {
+            out[i] = 0;
+            continue;
+        }
+        const float scale = static_cast<float>(std::max({r, g, b})) / static_cast<float>(REFERENCE[ramp]);
+        const std::uint32_t colour = chosen.rgb[ramp];
+        const int base[3] = {r, g, b};
+        std::uint32_t made = 0xffU;
+        for (int k = 0; k < 3; k++) {
+            const auto v = static_cast<float>((colour >> (16 - (8 * k))) & 0xffU);
+            float shade = scale <= 1 ? v * scale : v + ((255 - v) * std::min(1.0F, (scale - 1) * 0.6F));
+            /* The fade: the screen's component against the game's. */
+            const int shown = full(static_cast<u8>(now[(i * 3) + k] & 0x3fU));
+            shade = base[k] > 0 ? shade * static_cast<float>(shown) / static_cast<float>(base[k]) : 0;
+            made |= static_cast<std::uint32_t>(std::clamp(shade, 0.0F, 255.0F)) << (24 - (8 * k));
+        }
+        out[i] = made;
+    }
+}
+
 /* A colour of six hex digits; false for another text. */
 bool hexColour(const std::string &text, std::uint32_t *rgb)
 {
@@ -661,8 +715,39 @@ void setColoursText(const std::string &text)
 bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrored)
 {
     if (chosen == PRESETS[0].colours) {
+        clearLayer();
         return false;
     }
+    if (hardwareSetting()) {
+        /* In the game's colours, his pixels kept for the layer. */
+        const ViewportPixels pixels = view.pixels();
+        const u32 pitch = pixels.rows[1] - pixels.rows[0];
+        const auto keep = [&pixels, pitch](u8 &out, u8 in) {
+            out = in;
+            const auto offset = static_cast<u32>(&out - pixels.pixels);
+            const u32 column = offset % pitch;
+            const u32 row = offset / pitch;
+            if (column >= SCREEN_WIDTH || row >= SCREEN_HEIGHT) {
+                return;
+            }
+            const u32 at = (row * SCREEN_WIDTH) + column;
+            if (layerMap[at] == 0U) {
+                if (layerCount == LAYER_MOST) {
+                    return;
+                }
+                layerPixels[layerCount++] = at;
+            }
+            layerMap[at] = static_cast<u16>(in + 1);
+        };
+        const auto *bytes = reinterpret_cast<const u8 *>(frame);
+        if (mirrored) {
+            drawframe::draw<true>(pixels, x, y, bytes, keep);
+        } else {
+            drawframe::draw<false>(pixels, x, y, bytes, keep);
+        }
+        return true;
+    }
+    clearLayer();
     const u8 *look = tableFor(chosen);
     const auto put = [look](u8 &out, u8 in) { out = look[in]; };
     const auto *bytes = reinterpret_cast<const u8 *>(frame);
@@ -672,6 +757,53 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
         drawframe::draw<false>(view.pixels(), x, y, bytes, put);
     }
     return true;
+}
+
+void drawColoursLayer()
+{
+    if (!hardwareSetting() || chosen == PRESETS[0].colours || layerCount == 0 || worldActive == 0U ||
+        worldFrozen != 0U || drawViewport == nullptr) {
+        return;
+    }
+    /* The pixels still his on the screen drawn (another item over him, or
+     * him moved away: no longer), and their box. */
+    const ViewportPixels screen = drawViewport->pixels();
+    int left = SCREEN_WIDTH;
+    int top = SCREEN_HEIGHT;
+    int right = -1;
+    int bottom = -1;
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < layerCount; i++) {
+        const u32 at = layerPixels[i];
+        const u32 column = at % SCREEN_WIDTH;
+        const u32 row = at / SCREEN_WIDTH;
+        if (screen.pixels[screen.rows[row] + column] + 1 != layerMap[at]) {
+            layerMap[at] = 0;
+            continue;
+        }
+        layerPixels[kept++] = at;
+        left = std::min(left, static_cast<int>(column));
+        right = std::max(right, static_cast<int>(column));
+        top = std::min(top, static_cast<int>(row));
+        bottom = std::max(bottom, static_cast<int>(row));
+    }
+    layerCount = kept;
+    if (right < left || right - left >= LAYER_SIDE || bottom - top >= LAYER_SIDE) {
+        return;
+    }
+    std::uint32_t exact[256];
+    exactColours(exact);
+    const int width = right - left + 1;
+    const int height = bottom - top + 1;
+    std::fill_n(layerPicture, static_cast<std::size_t>(width) * height, 0U);
+    for (std::size_t i = 0; i < layerCount; i++) {
+        const u32 at = layerPixels[i];
+        const auto column = static_cast<int>(at % SCREEN_WIDTH);
+        const auto row = static_cast<int>(at / SCREEN_WIDTH);
+        layerPicture[(static_cast<std::size_t>(row - top) * width) + (column - left)] = exact[layerMap[at] - 1];
+    }
+    overlayPictureAs(layerPicture, width, height, static_cast<float>(left), static_cast<float>(top),
+                     static_cast<float>(width), static_cast<float>(height), OverlayBlend::BLEND, true);
 }
 
 void openColours()

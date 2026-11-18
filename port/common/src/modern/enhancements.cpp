@@ -8,6 +8,7 @@
 
 namespace {
 
+bool &hardwareOn = gameSetting<bool>(true);
 bool &pathLineOn = gameSetting<bool>(true);
 bool &pickupsNearOn = gameSetting<bool>(true);
 
@@ -70,6 +71,16 @@ Setting zoomSetting()
                    nullptr};
 }
 
+Setting hardwareChoice()
+{
+    return Setting{Words{"HARDWARE SCENE", "하드웨어 장면"},
+                   onOffChoices(),
+                   0,
+                   []() { return static_cast<i16>(hardwareOn ? 0 : 1); },
+                   [](i16 choice) { hardwareOn = choice == 0; },
+                   nullptr};
+}
+
 Setting coloursSetting()
 {
     return Setting{Words{"CHARACTER COLOURS", "캐릭터 색상"},
@@ -94,9 +105,20 @@ Setting enhancementsSetting()
 
 SettingColumns enhancementColumns()
 {
-    return SettingColumns{{pointerControlsSetting(), lightingChoice(), nativeSetting(), zoomSetting(), coloursSetting()},
+    return SettingColumns{{pointerControlsSetting(), hardwareChoice(), lightingChoice(), nativeSetting(), zoomSetting(),
+                           coloursSetting()},
                           {flagSetting(Words{"WALK PATH LINE", "이동 경로 선"}, pathLineOn),
                            flagSetting(Words{"PICKUPS NEAR SOURCE", "획득 표시 위치"}, pickupsNearOn)}};
+}
+
+bool hardwareSetting()
+{
+    return hardwareOn;
+}
+
+void setHardwareSetting(bool on)
+{
+    hardwareOn = on;
 }
 
 bool pathLineSetting()
@@ -112,6 +134,7 @@ bool pickupsNearSetting()
 std::string enhancementsText()
 {
     std::string text;
+    text += std::string("hardware=") + (hardwareOn ? "1" : "0") + "\r\n";
     text += std::string("path_line=") + (pathLineOn ? "1" : "0") + "\r\n";
     text += std::string("pickups_near=") + (pickupsNearOn ? "1" : "0") + "\r\n";
     text += "zoom=" + std::to_string(screenZoom()) + "\r\n";
@@ -120,6 +143,10 @@ std::string enhancementsText()
 
 bool readEnhancement(const std::string &key, const std::string &value)
 {
+    if (key == "hardware") {
+        hardwareOn = value != "0";
+        return true;
+    }
     if (key == "path_line") {
         pathLineOn = value != "0";
         return true;
