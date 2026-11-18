@@ -1,7 +1,9 @@
 /* What the port's enhancements draw over the screen. See hud.h. */
 #include "hud.h"
+#include "gamestate.h"
 #include "camera.h"
 #include "control.h"
+#include "crusys.h"
 #include "itemdata.h"
 #include "itemutil.h"
 #include "npc.h"
@@ -9,6 +11,8 @@
 #include "pathwalk.h"
 #include "pfloat.h"
 #include "pointer.h"
+#include "systimer.h"
+#include "type.h"
 
 #include <algorithm>
 #include <climits>
@@ -23,6 +27,10 @@ const std::uint32_t OUT_OF_REACH = 0xe04040ff;
 const std::uint32_t PATH = 0xf0d04060;
 const std::uint32_t SPREAD = 0xff3030d0;
 const std::uint32_t LASER = 0xff2020ff;
+
+/* Ticks a hit NPC's health bar is shown, the last of them fading. */
+const u32 BAR_SHOWN = 135;
+const u32 BAR_FADE = 30;
 
 /* The target cursor: a thin ring, a dot and four short lines, each over a
  * shadow. */
@@ -85,6 +93,43 @@ void aimMarks()
     overlayDisc(stopX, stopY, aim.blocked ? 1.9F : 1.4F, LASER);
 }
 
+/* The NPCs hit lately (noteHit): the most hit points each had in its
+ * series of hits, and the tick of its last. */
+struct HitBar {
+    u16 most;
+    u32 at;
+};
+HitBar (&hitBars)[NPCS] = gameGlobal<HitBar[NPCS]>();
+
+/* A slim bar over each NPC hit lately: a faint dark track and its hit
+ * points' share of the most, green to red. */
+void healthBars()
+{
+    const u32 now = systemTimer->ticks;
+    for (u16 id = 2; id < NPCS; id++) {
+        const HitBar &bar = hitBars[id];
+        Npc npc(id);
+        if (bar.most == 0U || now - bar.at >= BAR_SHOWN || npc.container() != 0U || !npc.isOnScreen()) {
+            continue;
+        }
+        const float share = std::clamp(static_cast<float>(npc.hp()) / static_cast<float>(bar.most), 0.0F, 1.0F);
+        const u32 left = BAR_SHOWN - (now - bar.at);
+        const float fade = left < BAR_FADE ? static_cast<float>(left) / BAR_FADE : 1.0F;
+        const ShapeInfo info = typeFlags.info(npc.shape());
+        float x;
+        float y;
+        mapToOverlay(npc.centreX(), npc.centreY(), static_cast<i16>(npc.z() + (info.z * 8) + 10), &x, &y);
+        const float width = 32;
+        const float height = 3;
+        x -= width / 2;
+        overlayBox(x - 1, y - 1, width + 2, height + 2, 0x30000000U | static_cast<std::uint32_t>(170 * fade));
+        const auto red = static_cast<std::uint32_t>(std::clamp(2 * (1 - share), 0.0F, 1.0F) * 225);
+        const auto green = static_cast<std::uint32_t>((std::clamp(2 * share, 0.0F, 1.0F) * 200) + 25);
+        overlayBox(x, y, width * share, height,
+                   (red << 24) | (green << 16) | (60U << 8) | static_cast<std::uint32_t>(215 * fade));
+    }
+}
+
 void path()
 {
     const ItemPoint *points = nullptr;
@@ -99,6 +144,9 @@ void path()
 
 void drawHud()
 {
+    if (worldActive != 0U) {
+        healthBars();
+    }
     if (!pointerMode()) {
         return;
     }
@@ -123,6 +171,21 @@ void drawHud()
 void startHud()
 {
     overlayAction(drawHud);
+}
+
+void noteHit(u16 id, u16 before, u16 after)
+{
+    if (id < 2 || id >= NPCS || after >= before) {
+        return;
+    }
+    HitBar &bar = hitBars[id];
+    const u32 now = systemTimer->ticks;
+    if (bar.most == 0U || now - bar.at >= BAR_SHOWN) {
+        bar.most = before;
+    } else {
+        bar.most = std::max(bar.most, before);
+    }
+    bar.at = now;
 }
 
 void mapToOverlay(u16 x, u16 y, i16 z, float *screenX, float *screenY)

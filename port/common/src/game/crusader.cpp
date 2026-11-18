@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include "gamestate.h"
 #include "crusader.h"
+#include "hud.h"
 #include "pointer.h"
 #include "crusader_game.h"
 #include "animcach.h"
@@ -1349,11 +1350,15 @@ bool npcTakesHit(Item *item, u16 hitter, u8 direction, i16 damage, u16 type, Ite
         updateStatus(STATUS_HEALTH);
     }
     i16 hp = npc.hp();
+    const i16 before = hp;
     hp -= damage;
     if (hp < 0) {
         hp = 0;
     }
     npc.setHp(hp);
+    if (!item->isControlled()) {
+        noteHit(item->id, before, hp);
+    }
     const NpcHit hit = {shape, facing, direction, damage, type, point, isOrganic(item)};
     if (TAKE_HIT_NO_REGRET) {
         if (hp == 0) {

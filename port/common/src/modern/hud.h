@@ -1,7 +1,7 @@
 /* What the port's enhancements draw over the game's screen (platform/
  * overlay.h): the pointer mode's target cursor once the weapon is out, the
  * dot over what the Silencer can use or take (green in reach, red not), the
- * path of his walk. */
+ * path of his walk; a health bar over each NPC hit lately. */
 #ifndef PORT_HUD_H
 #define PORT_HUD_H
 #include "common.h"
@@ -11,6 +11,9 @@
 /* The overlay's function given to the system layer, once as the game
  * starts. */
 void startHud();
+/* An NPC's hit that took its hit points from before to after (npcTakesHit),
+ * for its health bar; none for the Silencer. */
+void noteHit(u16 id, u16 before, u16 after);
 /* The angle in degrees (0-359) of the map's dx,dy: 0 along x, 90 along y,
  * by the game's own sines (pfloat.h), as the reticle's (control.cpp's
  * placeReticle). */
