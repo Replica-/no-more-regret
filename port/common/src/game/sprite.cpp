@@ -31,6 +31,16 @@ namespace {
 /* The sprites that run. */
 u16 &runningSprites = gameGlobal<u16>(0);
 
+/* The port's pointer mode: the shot launchAtReticle launches goes through
+ * the point under the pointer (its spread around it), as fast as the
+ * game's own reticle shot, which goes 200 units out (placeReticle), six
+ * times that past it in No Regret (AIM_PAST_RETICLE). */
+bool pointerShot = false;
+s32 pointerShotReach()
+{
+    return AIM_PAST_RETICLE ? 200 * 6 : 200;
+}
+
 /* The shapes of fire, the explosions' blasts (explode's tables,
  * GRENADE_BLASTS, ROCKET_BLASTS), in adjustPoint's order. */
 constexpr std::array<u16, 10> FIRE_SHAPES = {0x326, 0x31c, 0x31f, 0x320, 0x321, 0x323, 0x324, 0x325, 0x322, 0x327};
@@ -430,6 +440,20 @@ void SuperSprite::launch(char newDirection, ItemPoint point, u16 newDamage, u16 
     distance /= 16;
     steps = distance / fireTypes[newFire].cellsPerRound;
     dz = point.z - now.z;
+    if (pointerShot) {
+        const s32 whole = mapDistance(point.x, point.y, point.z, nowX, nowY, now.z);
+        if (dx == 0 && dy == 0) {
+            dx = directionX16[static_cast<int>(newDirection) & 0xf] * pointerShotReach();
+            dy = directionY16[static_cast<int>(newDirection) & 0xf] * pointerShotReach();
+            dz = 0;
+        } else if (whole > 0) {
+            dx = dx * pointerShotReach() / whole;
+            dy = dy * pointerShotReach() / whole;
+            dz = static_cast<i16>(dz * pointerShotReach() / whole);
+        }
+        distance = static_cast<i16>(pointerShotReach() / 16);
+        steps = distance / fireTypes[newFire].cellsPerRound;
+    }
     if (dy == 0 && dx == 0) {
         halt();
     }
@@ -460,13 +484,15 @@ void SuperSprite::launchAtReticle(char newDirection, u16 newDamage, u16 newFire,
     y = itemY[firer.id];
     reticleX = spriteX(reticleSprite);
     reticleY = spriteY(reticleSprite);
-    /* The port's keyboard and mouse controls: the point under the pointer,
-     * wherever it is (pointer.h). */
+    /* The port's keyboard and mouse controls: the shot goes through the
+     * point under the pointer, wherever it is (pointer.h; pointerShot). */
     ItemPoint pointed;
     const bool pointer = newSource == controlledActor && pointerAimPoint(&pointed);
     if (pointer) {
-        reticleX = pointed.x;
-        reticleY = pointed.y;
+        pointerShot = true;
+        launch(newDirection, pointed, newDamage, newFire, newSource, newTarget, 1);
+        pointerShot = false;
+        return;
     }
     if (AIM_PAST_RETICLE) {
         reticleDx = reticleX - x;
@@ -480,12 +506,6 @@ void SuperSprite::launchAtReticle(char newDirection, u16 newDamage, u16 newFire,
         point.y = reticleY;
     }
     point.z = z;
-    /* The pointer's point has its own height: the shot goes to it, up or
-     * down (past it as far as the x and y go, AIM_PAST_RETICLE). */
-    if (pointer) {
-        const int rise = AIM_PAST_RETICLE ? (pointed.z - z) * 6 : pointed.z - z;
-        point.z = static_cast<u8>(std::clamp(z + rise, 0, 0xfa));
-    }
     launch(newDirection, point, newDamage, newFire, newSource, newTarget, 1);
 }
 

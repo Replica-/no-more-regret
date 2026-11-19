@@ -813,10 +813,9 @@ bool pointerAim(PointerAim *aim)
                                  std::abs(static_cast<i16>(sweep.end.y - aim->to.y)), std::abs(sweep.end.z - aim->to.z)});
     aim->blocked = !clear && sweep.hitItem != 0U && sweep.hitItem != target && sweep.hitItem != under && shortBy > 16;
     aim->stop = aim->blocked ? sweep.end : aim->to;
-    /* SuperSprite::launch's spread: a tenth of the distance to where the
-     * shot is launched at (past the reticle in No Regret), less for some
-     * weapons, at most 80 across and 24 up; scaled back to the point
-     * aimed at. */
+    /* SuperSprite::launch's spread around the point aimed at: a tenth of
+     * the distance to it, less for some weapons, at most 80 across and 24
+     * up. */
     const i16 type = weaponOf(Item(npc.activeWeapon()).shape());
     aim->spread = 0;
     aim->rise = 0;
@@ -827,7 +826,6 @@ bool pointerAim(PointerAim *aim)
     const int dy = std::abs(static_cast<i16>(aim->to.y - aim->from.y));
     const int dz = std::abs(aim->to.z - aim->from.z);
     const int near = std::max({dx, dy, dz});
-    const int launched = (target == 0U && AIM_PAST_RETICLE) ? near * 6 : near;
     int divisor = 10;
     if (type == FIRE_SG_A1 || type == FIRE_AC_88) {
         divisor = 8;
@@ -836,10 +834,9 @@ bool pointerAim(PointerAim *aim)
     } else if (type == FIRE_AR_7) {
         divisor = 5;
     }
-    const int spread = std::min(launched / divisor, 80);
-    const int rise = std::min(spread / 3, 24);
-    aim->spread = static_cast<i16>(launched > 0 ? spread * near / launched : 0);
-    aim->rise = static_cast<i16>(launched > 0 ? rise * near / launched : 0);
+    const int spread = std::min(near / divisor, 80);
+    aim->spread = static_cast<i16>(spread);
+    aim->rise = static_cast<i16>(std::min(spread / 3, 24));
     return true;
 }
 
