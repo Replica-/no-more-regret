@@ -14,10 +14,12 @@
 class Viewport;
 
 /* The fires (the jets of flame and the flames a blast leaves) are not the
- * game's frames but fire of the scene's own, in their shape: a body of
- * flame and the flames, embers and smoke it gives off. The game still draws
- * the frame, so that what stands in front of a fire hides it; what was
- * under the frame is kept as it is drawn and put back over it. */
+ * game's frames, nor in their shape (an editor's mark of PLACE ME is one),
+ * but fire of the scene's own as large as the item's box, its footprint and
+ * height: a glowing body and the tongues of flame, embers and smoke it
+ * gives off. Where the game draws the frame, what stands in front of the
+ * fire hides it; what was under the frame is kept as it is drawn and put
+ * back over it. */
 [[nodiscard]] bool effectsReplaces(u16 shape);
 /* Before (before) and after the game draws item's frame on view at x,y
  * (DL_ItemNode::draw, the wide screen's sides' drawItem, sides); toScreenX

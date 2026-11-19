@@ -27,11 +27,10 @@
 
 namespace {
 
-/* The flames a blast leaves, and how long they burn on and a frame of
- * theirs lasts (in the system timer's ticks, sixtieths of a second). */
+/* The flames a blast leaves, and how long they burn on (in the system
+ * timer's ticks, sixtieths of a second). */
 const u16 LEFT_FIRE = 0x44a;
 const u32 FIRE_LINGERS = 360;
-const u32 FIRE_FRAME = 5;
 /* A muzzle flash's ticks. */
 const u32 FLASH_TICKS = 6;
 
@@ -60,7 +59,6 @@ struct Lingering {
     u16 x;
     u16 y;
     u8 z;
-    u16 frame;
     u32 since;
     u16 key;
 };
@@ -397,7 +395,7 @@ struct Particle {
     float heat;
     Kind kind;
 };
-const int MOST_PARTICLES = 220;
+const int MOST_PARTICLES = 360;
 /* A fire: key's (the item's, or a flame left's), its point on the map, its
  * last tick, what it has given off. */
 struct Fire {
@@ -412,19 +410,6 @@ struct Fire {
     Particle particles[MOST_PARTICLES];
 };
 Fire fires[24];
-
-/* The fire's frame this frame on the screen: its box, each pixel's heat
- * (0 none) and whether it shows. */
-struct Shape {
-    int left;
-    int top;
-    int width;
-    int height;
-    int shown;
-    u8 heat[MOST_SIDE * MOST_SIDE];
-    u8 visible[MOST_SIDE * MOST_SIDE];
-};
-Shape shapeNow;
 
 Fire *fireOf(u16 key)
 {
@@ -447,64 +432,75 @@ Fire *fireOf(u16 key)
     return unused;
 }
 
-/* The fire's frame's pixels from the origin x,y, and which show (by its
- * cover, when the game drew it there: what is in front hides them). */
-bool shapeFire(u16 shape, u16 frameNumber, bool mirrored, float x, float y, const Cover *cover)
+/* The fire's body this frame: the item's box on the map (its footprint,
+ * x0-x1 by y0-y1, and its height from z0), its bounds on the screen, and
+ * the cover of the item the game drew (what is in front hides the fire's
+ * pixels there), none for an item the game does not draw. The flame is the
+ * box's own, no picture's: the art of a fire is not drawn. */
+struct Volume {
+    float x0;
+    float y0;
+    float x1;
+    float y1;
+    float z0;
+    float height;
+    float left;
+    float top;
+    float right;
+    float bottom;
+    const Cover *cover;
+};
+Volume volumeNow;
+
+/* The screen's point of the box's u,v across its footprint and w up it
+ * (each 0-1). */
+void volumePoint(float u, float v, float w, float *x, float *y)
 {
-    ShapeFrame *image = cachedShapeFrame(shape, frameNumber);
-    if (image == nullptr) {
-        return false;
-    }
-    const auto *frame = reinterpret_cast<const u8 *>(image);
-    int w = 0;
-    int h = 0;
-    if (!makePicture(frame, mirrored, 0, 0, false, &w, &h)) {
-        return false;
-    }
-    const s32 originX = mirrored ? w - 1 - drawframe::dword(frame + 0xc) : drawframe::dword(frame + 0xc);
-    shapeNow.left = static_cast<int>(std::floor(x + 0.5F)) - originX;
-    shapeNow.top = static_cast<int>(std::floor(y + 0.5F)) - drawframe::dword(frame + 0x10);
-    shapeNow.width = w;
-    shapeNow.height = h;
-    shapeNow.shown = 0;
-    const bool byCover = cover != nullptr && cover->frame == frameNumber && cover->width == w && cover->height == h;
-    for (int i = 0; i < w * h; i++) {
-        shapeNow.heat[i] = 0;
-        shapeNow.visible[i] = 0;
-        if ((picture[i] & 0xffU) == 0) {
-            continue;
-        }
-        const auto r = static_cast<float>(picture[i] >> 24);
-        const auto g = static_cast<float>((picture[i] >> 16) & 0xffU);
-        const auto b = static_cast<float>((picture[i] >> 8) & 0xffU);
-        const float light = ((0.3F * r) + (0.59F * g) + (0.11F * b)) / 255;
-        shapeNow.heat[i] = static_cast<u8>(std::clamp(0.3F + (0.85F * light), 0.01F, 1.0F) * 255);
-        if (!byCover || cover->seen[i] != 2) {
-            shapeNow.visible[i] = 1;
-            shapeNow.shown++;
-        }
-    }
-    return true;
+    const Volume &box = volumeNow;
+    mapToOverlay(static_cast<u16>(box.x1 - (u * (box.x1 - box.x0))), static_cast<u16>(box.y1 - (v * (box.y1 - box.y0))),
+                 static_cast<i16>(box.z0 + (w * box.height)), x, y);
 }
 
-/* A pixel of the frame's that shows, picked at random, its row in the
- * frame's top part (the fraction most of its height). */
-bool pickPixel(float most, int *column, int *row)
+/* The shape's box at the map's point: its footprint (16 map units a step
+ * across, the x and y swapped for a flipped item) and its height (8 a
+ * step), at least a flame's. */
+void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ, const Cover *cover)
 {
-    if (shapeNow.shown == 0) {
-        return false;
+    const ShapeInfo &info = typeFlags.infos[shape];
+    float across = static_cast<float>(std::max<int>(1, info.x)) * 16;
+    float deep = static_cast<float>(std::max<int>(1, info.y)) * 16;
+    if (flipped) {
+        std::swap(across, deep);
     }
-    const int tall = std::max(1, static_cast<int>(static_cast<float>(shapeNow.height) * most));
-    for (int tries = 0; tries < 12; tries++) {
-        const int c = static_cast<int>(random01() * static_cast<float>(shapeNow.width));
-        const int r = static_cast<int>(random01() * static_cast<float>(tall));
-        if (c < shapeNow.width && r < shapeNow.height && shapeNow.visible[(r * shapeNow.width) + c] != 0U) {
-            *column = c;
-            *row = r;
-            return true;
-        }
+    Volume &box = volumeNow;
+    box.x1 = mapX;
+    box.y1 = mapY;
+    box.x0 = static_cast<float>(mapX) - across;
+    box.y0 = static_cast<float>(mapY) - deep;
+    box.z0 = mapZ;
+    box.height = std::max(24.0F, static_cast<float>(info.z) * 8);
+    box.cover = cover;
+    box.left = 1e9F;
+    box.top = 1e9F;
+    box.right = -1e9F;
+    box.bottom = -1e9F;
+    for (int corner = 0; corner < 8; corner++) {
+        float x = 0;
+        float y = 0;
+        volumePoint(static_cast<float>(corner & 1), static_cast<float>((corner >> 1) & 1),
+                    static_cast<float>(corner >> 2), &x, &y);
+        box.left = std::min(box.left, x);
+        box.top = std::min(box.top, y);
+        box.right = std::max(box.right, x);
+        box.bottom = std::max(box.bottom, y);
     }
-    return false;
+}
+
+/* The footprint's size in steps of 16 map units square, the flame's
+ * thickness: how many tongues it gives off and how wide they are. */
+float volumeCells()
+{
+    return ((volumeNow.x1 - volumeNow.x0) * (volumeNow.y1 - volumeNow.y0)) / 256.0F;
 }
 
 void addParticle(Fire &fire, const Particle &particle)
@@ -518,29 +514,32 @@ void addParticle(Fire &fire, const Particle &particle)
  * gave off moves. Places from the fire's origin, ox,oy. */
 void tickFire(Fire &fire, bool burning, float ox, float oy)
 {
-    if (burning && shapeNow.shown > 0) {
-        const float size = std::clamp(static_cast<float>(shapeNow.shown) / 300.0F, 0.4F, 2.5F);
-        const int flames = std::clamp(static_cast<int>(static_cast<float>(shapeNow.shown) / 30.0F), 3, 14);
-        int column = 0;
-        int row = 0;
+    if (burning) {
+        /* Tongues from all over the footprint, near the floor, rising to
+         * about the box's height as they cool; embers from its upper part;
+         * smoke from its top. */
+        const float cells = volumeCells();
+        const float size = std::clamp(std::sqrt(cells) * 1.6F, 2.4F, 6.0F);
+        const int flames = std::clamp(static_cast<int>(cells * 2.0F), 5, 24);
+        const float tall = volumeNow.height;
+        float x = 0;
+        float y = 0;
         for (int n = 0; n < flames; n++) {
-            if (!pickPixel(1.0F, &column, &row)) {
-                break;
-            }
-            const float heat = static_cast<float>(shapeNow.heat[(row * shapeNow.width) + column]) / 255;
-            addParticle(fire, {static_cast<float>(shapeNow.left + column) + random01() - ox,
-                               static_cast<float>(shapeNow.top + row) + random01() - oy, between(-0.12F, 0.12F),
-                               -between(0.3F, 0.8F), 0, between(9, 22), between(1.4F, 2.8F), heat, Kind::FLAME});
+            volumePoint(random01(), random01(), between(0, 0.12F), &x, &y);
+            const float life = between(16, 28);
+            const float rise = (tall * between(0.5F, 1.0F)) / life;
+            addParticle(fire, {x - ox, y - oy, between(-0.1F, 0.1F), -rise, 0, life, size * between(0.75F, 1.2F),
+                               between(0.75F, 1.0F), Kind::FLAME});
         }
-        if (random01() < 0.12F * size && pickPixel(0.5F, &column, &row)) {
-            addParticle(fire, {static_cast<float>(shapeNow.left + column) - ox,
-                               static_cast<float>(shapeNow.top + row) - oy, between(-0.45F, 0.45F),
-                               -between(0.8F, 1.6F), 0, between(35, 75), between(0.55F, 0.9F), 1, Kind::EMBER});
+        if (random01() < 0.08F + (0.01F * cells)) {
+            volumePoint(random01(), random01(), between(0.4F, 0.9F), &x, &y);
+            addParticle(fire, {x - ox, y - oy, between(-0.45F, 0.45F), -between(0.8F, 1.6F), 0, between(35, 75),
+                               between(0.55F, 0.9F), 1, Kind::EMBER});
         }
-        if (random01() < 0.2F * size && pickPixel(0.3F, &column, &row)) {
-            addParticle(fire, {static_cast<float>(shapeNow.left + column) - ox,
-                               static_cast<float>(shapeNow.top + row) - oy - 2, between(-0.1F, 0.1F),
-                               -between(0.25F, 0.45F), 0, between(70, 110), between(2.5F, 4.5F), 0, Kind::SMOKE});
+        if (random01() < 0.25F + (0.02F * cells)) {
+            volumePoint(random01(), random01(), between(0.85F, 1.0F), &x, &y);
+            addParticle(fire, {x - ox, y - oy, between(-0.1F, 0.1F), -between(0.25F, 0.45F), 0, between(70, 110),
+                               size * between(1.2F, 1.8F), 0, Kind::SMOKE});
         }
     }
     int kept = 0;
@@ -589,23 +588,25 @@ struct Canvas {
     int height;
 };
 
-/* A soft spot of radius (the screen's pixels) at the screen's x,y: its
- * colour added on, or its smoke (alpha) when smoky. */
+/* A soft spot of radius (the screen's pixels) at the screen's x,y, tall
+ * times as high as it is wide: its colour added on, or its smoke (alpha)
+ * when smoky. */
 void splat(const Canvas &at, float x, float y, float radius, float red, float green, float blue, float alpha,
-           bool smoky)
+           bool smoky, float tall = 1.0F)
 {
     const float cx = (x - at.left) * CANVAS_SCALE;
     const float cy = (y - at.top) * CANVAS_SCALE;
     const float r = std::max(0.75F, radius * CANVAS_SCALE);
+    const float squash = 1.0F / tall;
     const int x0 = std::max(0, static_cast<int>(cx - r));
     const int x1 = std::min(at.width - 1, static_cast<int>(cx + r));
-    const int y0 = std::max(0, static_cast<int>(cy - r));
-    const int y1 = std::min(at.height - 1, static_cast<int>(cy + r));
+    const int y0 = std::max(0, static_cast<int>(cy - (r * tall)));
+    const int y1 = std::min(at.height - 1, static_cast<int>(cy + (r * tall)));
     const float inverse = 1.0F / (r * r);
     for (int py = y0; py <= y1; py++) {
         for (int px = x0; px <= x1; px++) {
             const float dx = (static_cast<float>(px) + 0.5F) - cx;
-            const float dy = (static_cast<float>(py) + 0.5F) - cy;
+            const float dy = ((static_cast<float>(py) + 0.5F) - cy) * squash;
             float k = 1.0F - (((dx * dx) + (dy * dy)) * inverse);
             if (k <= 0) {
                 continue;
@@ -623,30 +624,33 @@ void splat(const Canvas &at, float x, float y, float radius, float red, float gr
     }
 }
 
-/* Whether the screen's x,y is on a pixel of the fire's frame that what is
- * in front hides. */
+/* Whether the screen's x,y is on a pixel of the item's frame that what is
+ * in front hides (its cover's), when the game draws the item. */
 bool hiddenAt(float x, float y)
 {
-    const int column = static_cast<int>(std::floor(x)) - shapeNow.left;
-    const int row = static_cast<int>(std::floor(y)) - shapeNow.top;
-    if (column < 0 || row < 0 || column >= shapeNow.width || row >= shapeNow.height) {
+    const Cover *cover = volumeNow.cover;
+    if (cover == nullptr) {
         return false;
     }
-    const int i = (row * shapeNow.width) + column;
-    return shapeNow.heat[i] != 0U && shapeNow.visible[i] == 0U;
+    const int column = static_cast<int>(std::floor(x)) - (cover->left - scrollX);
+    const int row = static_cast<int>(std::floor(y)) - (cover->top - scrollY);
+    if (column < 0 || row < 0 || column >= cover->width || row >= cover->height) {
+        return false;
+    }
+    return cover->seen[(row * cover->width) + column] == 2;
 }
 
 /* The fire drawn from its origin ox,oy: its body (its frame's pixels that
  * show, their heat flickering), its flames, embers and smoke. */
 void drawFire(const Fire &fire, bool burning, float ox, float oy)
 {
-    float minX = burning ? static_cast<float>(shapeNow.left) : 1e9F;
-    float minY = burning ? static_cast<float>(shapeNow.top) : 1e9F;
-    float maxX = burning ? static_cast<float>(shapeNow.left + shapeNow.width) : -1e9F;
-    float maxY = burning ? static_cast<float>(shapeNow.top + shapeNow.height) : -1e9F;
+    float minX = burning ? volumeNow.left : 1e9F;
+    float minY = burning ? volumeNow.top : 1e9F;
+    float maxX = burning ? volumeNow.right : -1e9F;
+    float maxY = burning ? volumeNow.bottom : -1e9F;
     for (int i = 0; i < fire.count; i++) {
         const Particle &p = fire.particles[i];
-        const float reach = p.kind == Kind::SMOKE ? p.size * 2.5F : p.size;
+        const float reach = p.kind == Kind::SMOKE ? p.size * 2.5F : p.size * 2;
         minX = std::min(minX, ox + p.x - reach);
         minY = std::min(minY, oy + p.y - reach);
         maxX = std::max(maxX, ox + p.x + reach);
@@ -671,19 +675,29 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
     float green = 0;
     float blue = 0;
     if (burning) {
-        for (int row = 0; row < shapeNow.height; row++) {
-            for (int column = 0; column < shapeNow.width; column++) {
-                const int i = (row * shapeNow.width) + column;
-                if (shapeNow.visible[i] == 0U) {
-                    continue;
+        /* Its body: the glow over the footprint and its lower part,
+         * flickering, hottest low down. */
+        const float cells = volumeCells();
+        const int across = std::clamp(static_cast<int>(std::sqrt(cells) * 2.5F), 3, 9);
+        const float radius = std::clamp(std::sqrt(cells) * 2.2F, 3.0F, 8.0F);
+        for (int i = 0; i < across; i++) {
+            for (int j = 0; j < across; j++) {
+                for (int level = 0; level < 2; level++) {
+                    const float u = (static_cast<float>(i) + 0.5F) / static_cast<float>(across);
+                    const float v = (static_cast<float>(j) + 0.5F) / static_cast<float>(across);
+                    const float w = level == 0 ? 0.04F : 0.22F;
+                    float x = 0;
+                    float y = 0;
+                    volumePoint(u, v, w, &x, &y);
+                    if (hiddenAt(x, y)) {
+                        continue;
+                    }
+                    const float flicker = noise((u * 5) + (static_cast<float>(level) * 9), (v * 5) + (t * 7.0F));
+                    const float heat = (level == 0 ? 0.85F : 0.6F) * (0.55F + (0.6F * flicker));
+                    fireColour(heat, &red, &green, &blue);
+                    splat(at, x, y, radius * (level == 0 ? 1.0F : 0.8F), red * 0.18F, green * 0.18F, blue * 0.18F,
+                          0, false, 1.4F);
                 }
-                const float flicker =
-                    noise(static_cast<float>(column) * 0.3F, (static_cast<float>(row) * 0.25F) + (t * 6.0F));
-                const float heat = (static_cast<float>(shapeNow.heat[i]) / 255) * (0.6F + (0.6F * flicker));
-                fireColour(heat, &red, &green, &blue);
-                splat(at, static_cast<float>(shapeNow.left + column) + 0.5F,
-                      static_cast<float>(shapeNow.top + row) + 0.5F, 1.1F, red * 0.45F, green * 0.45F, blue * 0.45F,
-                      0, false);
             }
         }
     }
@@ -696,10 +710,14 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
         }
         const float left = 1.0F - (p.age / p.life);
         switch (p.kind) {
-        case Kind::FLAME:
-            fireColour((p.heat * left * (2 - left)) + 0.05F, &red, &green, &blue);
-            splat(at, x, y, p.size * (0.5F + (0.5F * left)), red * 0.6F, green * 0.6F, blue * 0.6F, 0, false);
+        case Kind::FLAME: {
+            const float cooled = p.heat * (0.35F + (0.55F * left * left));
+            fireColour(cooled, &red, &green, &blue);
+            const float fade = std::min(1.0F, p.age / 3.0F) * (0.3F + (0.7F * left));
+            splat(at, x, y, p.size * (0.45F + (0.55F * left)), red * 0.32F * fade, green * 0.32F * fade,
+                  blue * 0.32F * fade, 0, false, 1.9F);
             break;
+        }
         case Kind::EMBER: {
             const float twinkle = 0.6F + (0.4F * noise(p.age * 0.5F, p.x));
             fireColour(0.55F + (0.45F * left), &red, &green, &blue);
@@ -728,9 +746,9 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
     overlayPictureAs(canvas, at.width, at.height, at.left, at.top, w, h, OverlayBlend::ADD, false);
 }
 
-/* A fire's ticks and pictures: key's, at the map's point, burning frame of
- * shape; with a glow round it, flickering, as large as it shows. */
-void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, u16 frame, bool mirrored, const Cover *cover)
+/* A fire's ticks and pictures: key's, at the map's point, as large as
+ * shape's box (volumeOf); with a glow round it, flickering. */
+void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored, const Cover *cover)
 {
     Fire *fire = fireOf(key);
     if (fire == nullptr) {
@@ -743,20 +761,15 @@ void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, u16 frame, bool mirr
     float x;
     float y;
     mapToOverlay(mapX, mapY, mapZ, &x, &y);
-    if (!shapeFire(shape, frame, mirrored, x, y, cover)) {
-        return;
-    }
+    volumeOf(shape, mirrored, mapX, mapY, mapZ, cover);
     const u32 time = now();
     for (u32 steps = std::min<u32>(time - fire->tick, 6); steps > 0; steps--) {
         tickFire(*fire, true, x, y);
     }
     fire->tick = time;
-    if (shapeNow.shown > 0) {
-        const float strength = std::clamp(static_cast<float>(shapeNow.shown) / 600.0F, 0.25F, 1.0F) *
-                               (0.8F + (0.2F * noise(static_cast<float>(time) * 0.15F, static_cast<float>(key))));
-        flash(static_cast<float>(shapeNow.left) + (static_cast<float>(shapeNow.width) / 2),
-              static_cast<float>(shapeNow.top) + (static_cast<float>(shapeNow.height) / 2), strength * 0.45F);
-    }
+    const float strength = std::clamp(volumeCells() / 8.0F, 0.3F, 1.0F) *
+                           (0.8F + (0.2F * noise(static_cast<float>(time) * 0.15F, static_cast<float>(key))));
+    flash((volumeNow.left + volumeNow.right) / 2, (volumeNow.top + volumeNow.bottom) / 2, strength * 0.45F);
     drawFire(*fire, true, x, y);
 }
 
@@ -878,7 +891,7 @@ void effectsGone(u16 item)
     if (lingeringCount == static_cast<int>(std::size(lingering))) {
         return;
     }
-    lingering[lingeringCount++] = {itemX[item], itemY[item], itemZ[item], Item(item).frame(), now(),
+    lingering[lingeringCount++] = {itemX[item], itemY[item], itemZ[item], now(),
                                    static_cast<u16>(0x8000U | (nextLingeringKey++ & 0x7fffU))};
 }
 
@@ -910,7 +923,7 @@ void drawEffects()
                     continue;
                 }
                 if (isFire(itemShape[item])) {
-                    burn(item, itemX[item], itemY[item], itemZ[item], itemShape[item], Item(item).frame(),
+                    burn(item, itemX[item], itemY[item], itemZ[item], itemShape[item],
                          (itemFlags[item] & ITEM_FLIPPED) != 0, freshCover(item));
                     continue;
                 }
@@ -935,11 +948,7 @@ void drawEffects()
             drawEffect(sprite.shape, sprite.frame, x, y, false, typeFlags.infos[sprite.shape].translucent != 0U);
         }
     }
-    /* The flames left, burning on, their frames going round. */
-    u16 frames = 1;
-    u16 width = 0;
-    u16 height = 0;
-    shapeCache->shapeHeader(LEFT_FIRE, &width, &height, &frames);
+    /* The flames left, burning on. */
     int kept = 0;
     for (int i = 0; i < lingeringCount; i++) {
         Lingering &fire = lingering[i];
@@ -947,8 +956,7 @@ void drawEffects()
         if (since > FIRE_LINGERS) {
             continue;
         }
-        const auto frame = static_cast<u16>((fire.frame + (since / FIRE_FRAME)) % std::max<u16>(1, frames));
-        burn(fire.key, fire.x, fire.y, fire.z, LEFT_FIRE, frame, false, nullptr);
+        burn(fire.key, fire.x, fire.y, fire.z, LEFT_FIRE, false, nullptr);
         lingering[kept++] = fire;
     }
     lingeringCount = kept;
@@ -965,9 +973,7 @@ void drawEffects()
         float x;
         float y;
         mapToOverlay(fire.mapX, fire.mapY, fire.mapZ, &x, &y);
-        shapeNow.shown = 0;
-        shapeNow.width = 0;
-        shapeNow.height = 0;
+        volumeNow.cover = nullptr;
         for (u32 steps = std::min<u32>(time - fire.tick, 6); steps > 0; steps--) {
             tickFire(fire, false, x, y);
         }
