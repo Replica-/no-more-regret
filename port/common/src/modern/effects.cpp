@@ -63,6 +63,16 @@ bool isFire(u16 shape)
     return shape == 0x438 || shape == 0x439 || shape == 0x43b || shape == 0x43c || shape == 0x50a || shape == LEFT_FIRE;
 }
 
+/* The jets of flame out of a pipe: their box lies long along the floor,
+ * the pipe at its far end (its least x or y), the flame shooting along it
+ * to the item's own corner, as their art's does. */
+bool isJet(u16 shape)
+{
+    return shape == 0x43b || shape == 0x50a;
+}
+/* How high up its box a jet comes out of the pipe (0-1). */
+const float JET_HEIGHT = 0.25F;
+
 bool on()
 {
     return hardwareSetting() && worldActive != 0U && std::strcmp(PROFILE_NAME, "remorse") == 0;
@@ -307,7 +317,7 @@ void fireColour(float heat, float *red, float *green, float *blue)
 /* What a fire of the scene's gives off, on the screen from its origin:
  * flames rise and cool, embers fly up and wander, smoke drifts up and
  * spreads. */
-enum class Kind : std::uint8_t { FLAME, EMBER, SMOKE };
+enum class Kind : std::uint8_t { FLAME, JET, EMBER, SMOKE };
 struct Particle {
     float x;
     float y;
@@ -372,6 +382,7 @@ struct Volume {
     float top;
     float right;
     float bottom;
+    bool jet;
 };
 Volume volumeNow;
 
@@ -402,6 +413,7 @@ void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ)
     box.y0 = static_cast<float>(mapY) - deep;
     box.z0 = mapZ;
     box.height = std::max(24.0F, static_cast<float>(info.z) * 8);
+    box.jet = isJet(shape);
     box.left = 1e9F;
     box.top = 1e9F;
     box.right = -1e9F;
@@ -425,6 +437,17 @@ float volumeCells()
     return ((volumeNow.x1 - volumeNow.x0) * (volumeNow.y1 - volumeNow.y0)) / 256.0F;
 }
 
+/* The screen's point of a jet's line, along 0 at the pipe to 1 at its
+ * end, w up its box: down the middle of the box's long side. */
+void jetPoint(float along, float w, float *x, float *y)
+{
+    if (volumeNow.x1 - volumeNow.x0 >= volumeNow.y1 - volumeNow.y0) {
+        volumePoint(1 - along, 0.5F, w, x, y);
+    } else {
+        volumePoint(0.5F, 1 - along, w, x, y);
+    }
+}
+
 void addParticle(Fire &fire, const Particle &particle)
 {
     if (fire.count < MOST_PARTICLES) {
@@ -436,7 +459,44 @@ void addParticle(Fire &fire, const Particle &particle)
  * gave off moves. Places from the fire's origin, ox,oy. */
 void tickFire(Fire &fire, bool burning, float ox, float oy)
 {
-    if (burning) {
+    if (burning && volumeNow.jet) {
+        /* A jet: tongues out of the pipe, hot and narrow, shooting along
+         * its line, slowing, spreading and rising as they cool at its end;
+         * embers thrown off its far half, smoke from its end. */
+        float startX = 0;
+        float startY = 0;
+        float endX = 0;
+        float endY = 0;
+        /* From just inside the pipe's mouth. */
+        jetPoint(-0.05F, JET_HEIGHT, &startX, &startY);
+        jetPoint(1, JET_HEIGHT, &endX, &endY);
+        const float dx = endX - startX;
+        const float dy = endY - startY;
+        const float length = std::max(1.0F, root((dx * dx) + (dy * dy)));
+        for (int n = 0; n < 16; n++) {
+            const float life = between(14, 20);
+            const float speed = between(1.45F, 1.75F) / life;
+            const float spread = between(-0.012F, 0.012F);
+            const float vx = (dx * speed) - (dy * spread);
+            const float vy = (dy * speed) + (dx * spread);
+            /* Out at any moment of the tick: no gaps between the ticks'. */
+            const float early = random01();
+            addParticle(fire, {startX - ox + (vx * early), startY - oy + (vy * early), vx, vy, 0, life,
+                               between(3.0F, 4.0F), between(0.9F, 1.0F), Kind::JET});
+        }
+        float x = 0;
+        float y = 0;
+        if (random01() < 0.25F) {
+            jetPoint(between(0.5F, 1.0F), JET_HEIGHT, &x, &y);
+            addParticle(fire, {x - ox, y - oy, (dx / length) * between(0.3F, 0.8F), -between(0.6F, 1.4F), 0,
+                               between(30, 60), between(0.55F, 0.9F), 1, Kind::EMBER});
+        }
+        if (random01() < 0.35F) {
+            jetPoint(between(0.8F, 1.0F), JET_HEIGHT + 0.2F, &x, &y);
+            addParticle(fire, {x - ox, y - oy, between(-0.1F, 0.1F), -between(0.25F, 0.45F), 0, between(70, 110),
+                               between(4.0F, 6.0F), 0, Kind::SMOKE});
+        }
+    } else if (burning) {
         /* Tongues from all over the footprint, near the floor, rising to
          * about the box's height as they cool; embers from its upper part;
          * smoke from its top. */
@@ -475,6 +535,13 @@ void tickFire(Fire &fire, bool burning, float ox, float oy)
         case Kind::FLAME:
             p.vy -= 0.025F;
             p.vx += (noise(p.x * 0.2F, p.age * 0.15F) - 0.5F) * 0.08F;
+            break;
+        case Kind::JET:
+            /* Slowed by the air, more and more buoyant as it cools. */
+            p.vx *= 0.95F;
+            p.vy *= 0.95F;
+            p.vy -= 0.3F * (p.age / p.life) * (p.age / p.life);
+            p.vx += (noise(p.x * 0.2F, p.age * 0.15F) - 0.5F) * 0.05F;
             break;
         case Kind::EMBER:
             p.vx += (noise((p.x * 0.1F) + 17, p.age * 0.2F) - 0.5F) * 0.12F;
@@ -580,7 +647,19 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
     float red = 0;
     float green = 0;
     float blue = 0;
-    if (burning) {
+    if (burning && volumeNow.jet) {
+        /* A jet's body: the glow along its line, white hot at the pipe,
+         * wider and cooler toward its end, flickering. */
+        for (int i = 0; i < 10; i++) {
+            const float along = (static_cast<float>(i) + 0.5F) / 10;
+            float x = 0;
+            float y = 0;
+            jetPoint(along * 0.8F, JET_HEIGHT, &x, &y);
+            const float flicker = noise(along * 6, t * 7.0F);
+            fireColour((1.0F - (0.5F * along)) * (0.7F + (0.4F * flicker)), &red, &green, &blue);
+            splat(at, x, y, 2.5F + (5.0F * along), red * 0.5F, green * 0.5F, blue * 0.5F, 0, false, 1.2F);
+        }
+    } else if (burning) {
         /* Its body: the glow over the footprint and its lower part,
          * flickering, hottest low down. */
         const float cells = volumeCells();
@@ -616,6 +695,15 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
             const float fade = std::min(1.0F, p.age / 3.0F) * (0.3F + (0.7F * left));
             splat(at, x, y, p.size * (0.45F + (0.55F * left)), red * 0.32F * fade, green * 0.32F * fade,
                   blue * 0.32F * fade, 0, false, 1.9F);
+            break;
+        }
+        case Kind::JET: {
+            /* Narrow out of the pipe, widening as it goes and cools. */
+            const float cooled = p.heat * (0.3F + (0.7F * left));
+            fireColour(cooled, &red, &green, &blue);
+            const float fade = 0.3F + (0.7F * left);
+            splat(at, x, y, p.size * (0.45F + (1.8F * (1.0F - left))), red * 0.45F * fade, green * 0.45F * fade,
+                  blue * 0.45F * fade, 0, false, 1.2F);
             break;
         }
         case Kind::EMBER: {
