@@ -181,7 +181,6 @@ The game's keys are the original's. The port adds these:
 | Key | What it does |
 |---|---|
 | Alt+Enter | Full screen on and off |
-| Ctrl+F10 | Frees the mouse; a click on the window takes it again |
 | F2 (in the game), or OPTIONS in the main menu | The settings screen |
 
 ### The settings screen

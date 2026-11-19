@@ -45,8 +45,9 @@
  * (at the game's speed, mousedrv.h; the driver's pixels across are half
  * the screen's); the motion of a frame is one event of the
  * mouse, and a button going down or up one more with the motion before it.
- * The window captures the mouse when it opens; Control+F10 frees it, and a
- * click in the window captures it again, a click the game does not get.
+ * The window captures the mouse when it opens; when something frees it (a
+ * message box), a click in the window captures it again, a click the game
+ * does not get.
  *
  * The other devices' events go to the keyboard as they are (input.h's
  * DeviceEvent, pc.h's keyboardDevice): the mouse's middle and side buttons
@@ -209,9 +210,9 @@ bool wideShaped = false;
 
 /* The window thread's: the window, its renderer, the screen in the
  * window's colours, the size of the mode's, the picture it shows; the
- * mouse captured or free, its buttons down, and the key or button that
- * captured or freed it, whose going up the game does not get either; the
- * window closed, and when. */
+ * mouse captured or free, its buttons down, and the button that captured
+ * it, whose going up the game does not get either; the window closed, and
+ * when. */
 SDL_Window *window = nullptr;
 SDL_Renderer *renderer = nullptr;
 SDL_Texture *texture = nullptr;
@@ -221,7 +222,6 @@ bool captured = false;
 /* What the title says after the game's name (windowTitleNote). */
 std::string titleNote;
 u16 buttons = 0;
-SDL_Scancode keptKey = SDL_SCANCODE_UNKNOWN;
 Uint8 keptButton = 0;
 /* The mouse's middle and side buttons down as the game has them (bits of
  * DEVICE_MOUSE_*). */
@@ -494,7 +494,7 @@ void capture(bool on)
 void showTitle()
 {
     const std::string title = std::string(PROFILE_TITLE) + " - " + PORT_NAME + " " + portVersion() + titleNote +
-                              (captured ? " - Ctrl+F10 frees the mouse" : " - click to capture the mouse");
+                              (captured ? "" : " - click to capture the mouse");
     SDL_SetWindowTitle(window, title.c_str());
 }
 
@@ -822,19 +822,6 @@ void keyEvent(const SDL_KeyboardEvent &key)
         return;
     }
     const bool down = key.down;
-    if (down && key.scancode == SDL_SCANCODE_F10 && ((key.mod & SDL_KMOD_CTRL) != 0U) && captured) {
-        if (buttons != 0U) {
-            buttons = 0;
-            give({.kind = Input::BUTTONS, .buttons = buttons});
-        }
-        capture(false);
-        keptKey = key.scancode;
-        return;
-    }
-    if (!down && key.scancode == keptKey) {
-        keptKey = SDL_SCANCODE_UNKNOWN;
-        return;
-    }
     if (hostKey(key, down)) {
         return;
     }

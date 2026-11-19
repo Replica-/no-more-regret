@@ -148,7 +148,6 @@ Origin Systems의 DOS 게임 Crusader: No Remorse(1995)와 Crusader: No Regret(1
 | 키 | 하는 일 |
 |---|---|
 | Alt+Enter | 전체 화면 켜고 끄기 |
-| Ctrl+F10 | 마우스를 놓아 줍니다. 창을 클릭하면 다시 잡습니다 |
 | F2(게임 중), 또는 주 메뉴의 OPTIONS | 설정 화면 |
 
 ### 설정 화면

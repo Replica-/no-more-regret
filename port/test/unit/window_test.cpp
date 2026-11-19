@@ -6,7 +6,7 @@
  * the wall clock, waiting when ahead, catching up when behind, no more than
  * a second. SDL's keys as the keyboard's scan codes, through the BIOS.
  * SDL's relative motion as mickeys, at the game's speed, and the buttons,
- * to the game's handler; the mouse freed and captured again. The other
+ * to the game's handler, Control+F10 leaving it captured. The other
  * devices: the mouse's middle and side buttons and wheel, a gamepad's
  * (SDL's virtual one) buttons and axes, to the game's handler of them on
  * the keys' line. The sound on SDL's dummy audio: the lead of silence,
@@ -658,8 +658,8 @@ int checkWindow(int, char **)
     clockPass();
     check(mouseCalls.size() == calls + 6 && mouseCalls[calls + 4].events == 0x10 && last(1, 0, 0, 0),
           "the right up, then the motion to the limits");
-    /* Control+F10 frees the mouse, and the game gets neither the key nor
-     * the motion; a click captures it again, which the game does not get. */
+    /* Control+F10 does not free the mouse (it once did): the motion after
+     * it still comes. */
     SDL_Event f10{};
     f10.type = SDL_EVENT_KEY_DOWN;
     f10.key.scancode = SDL_SCANCODE_F10;
@@ -674,22 +674,11 @@ int checkWindow(int, char **)
     sync();
     clockPass();
     clockPass();
-    check(mouseCalls.size() == calls && !inputKeyWaiting(), "freed: no motion, no F10");
-    button(SDL_BUTTON_LEFT, true);
-    button(SDL_BUTTON_LEFT, false);
-    sync();
-    clockPass();
-    check(mouseCalls.size() == calls, "the click that captures it");
-    motion(3, 16);
-    sync();
-    clockPass();
-    /* Two thirds of a pixel back from the motion to the limits are kept. */
-    check(mouseCalls.size() == calls + 1 && last(1, 0, 7, 8), "captured again");
+    check(mouseCalls.size() > calls, "Control+F10 leaves the mouse captured");
 
     /* The other devices: the side buttons and the wheel's notches (flipped
      * the other way) to the game's handler of them at the frame; the middle
-     * button to it and to the driver; a freed mouse lets go of a side button
-     * held. */
+     * button to it and to the driver. */
     inputDevices(deviceHandler);
     auto wheel = [](Sint32 notches, bool flipped) {
         SDL_Event event{};
@@ -721,20 +710,11 @@ int checkWindow(int, char **)
               mouseCalls[calls].events == 0x20,
           "the middle button to the game's handler of the devices and to the driver");
     deviceCalls.clear();
-    f10.type = SDL_EVENT_KEY_DOWN;
-    f10.key.down = true;
-    SDL_PushEvent(&f10);
-    f10.type = SDL_EVENT_KEY_UP;
-    f10.key.down = false;
-    SDL_PushEvent(&f10);
+    button(SDL_BUTTON_X1, false);
     sync();
     clockPass();
     check(deviceCalls.size() == 1 && sawDevice(DeviceKind::MOUSE_BUTTON, DEVICE_MOUSE_X1, 0),
-          "freed: the side button held goes up");
-    button(SDL_BUTTON_LEFT, true);
-    button(SDL_BUTTON_LEFT, false);
-    sync();
-    clockPass();
+          "the side button goes up");
 
     /* The sound card's bytes go to SDL's audio, which
      * opens on the driver REGRET_AUDIO_DRIVER names, the dummy one here
