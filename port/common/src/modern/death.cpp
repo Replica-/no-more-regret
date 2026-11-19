@@ -47,11 +47,16 @@ public:
     void handleMouseMotion(NewGumpEvent *event) override;
     void handleKeyboard(NewGumpEvent *event) override;
     void paintSelf(i16 /*x*/, i16 /*y*/) override {}
+    /* Closes it with the lit choice taken: the gump is gone by the time
+     * the wait's rest runs, so the choice is kept apart (chosen). */
+    void choose();
 
     i16 lit = 0;
 };
 
 DeathGump *&openGump = gameGlobal<DeathGump *>(nullptr);
+/* The choice the gump closed with. */
+i16 &chosen = gameGlobal<i16>(0);
 
 i16 choiceAt(i16 x, i16 y)
 {
@@ -78,7 +83,7 @@ void DeathGump::handleLeftButton(NewGumpEvent *event)
     const i16 choice = choiceAt(eventX(event), eventY(event));
     if (choice >= 0) {
         lit = choice;
-        close();
+        choose();
     }
 }
 
@@ -95,11 +100,11 @@ void DeathGump::handleKeyboard(NewGumpEvent *event)
     switch (event->argument) {
     case '\r':
     case ' ':
-        close();
+        choose();
         break;
     case ASCII_ESCAPE:
         lit = 1;
-        close();
+        choose();
         break;
     case KEYCODE_SCAN | SCAN_UP:
     case KEYCODE_SCAN | SCAN_DOWN:
@@ -110,12 +115,17 @@ void DeathGump::handleKeyboard(NewGumpEvent *event)
     }
 }
 
+void DeathGump::choose()
+{
+    chosen = lit;
+    openGump = nullptr;
+    close();
+}
+
 void openDeath()
 {
     openGump = new DeathGump;
     openModalGump(openGump, static_cast<u32>(-1), [](s32 /*result*/) {
-        const i16 chosen = openGump->lit;
-        openGump = nullptr;
         if (chosen == 0) {
             openLoadGame();
         } else {
