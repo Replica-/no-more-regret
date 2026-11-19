@@ -513,6 +513,26 @@ bool pointerKey(KeyEvent &key, Action action)
         walkStop();
         return false;
     }
+    /* Kneeling, it rolls forward, towards the reticle (once a press). */
+    if (action == Action::MOVE_FORWARD && Npc(controlledActor).isKneeling() != 0U) {
+        walkStop();
+        if (key.pressed != 0U && key.repeat == 1 && controller != nullptr) {
+            Npc npc(controlledActor);
+            ItemPoint aim;
+            pointerAimPoint(&aim);
+            if (std::abs(static_cast<int>(aim.x) - static_cast<int>(npc.centreX())) +
+                    std::abs(static_cast<int>(aim.y) - static_cast<int>(npc.centreY())) >=
+                FACE_DEAD_ZONE * 4) {
+                npc.setDirection(static_cast<u8>(fineDirection(static_cast<i16>(npc.centreX()),
+                                                               static_cast<i16>(npc.centreY()),
+                                                               static_cast<i16>(aim.x), static_cast<i16>(aim.y)) &
+                                                 0xf));
+            }
+            KeyEvent roll = key;
+            controller->actionKey(&roll, Action::ROLL_FORWARD);
+        }
+        return true;
+    }
     if (action == Action::MOVE_FORWARD) {
         walkHold(key.pressed != 0U);
         return true;
