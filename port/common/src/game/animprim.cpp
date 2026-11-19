@@ -15,6 +15,7 @@
 #include "itemfind.h"
 #include "kernel.h"
 #include "npc.h"
+#include "pointer.h"
 #include "systimer.h"
 #include "type.h"
 #include "shapes.h"
@@ -628,6 +629,14 @@ ItemPoint AnimPrimitive::frameDestination(Npc &npc, AnimFrame &current, const It
     ItemPoint next;
     next.set(pos.x + (directionX16[static_cast<int>(dir)] * step), pos.y + (directionY16[static_cast<int>(dir)] * step),
              pos.z + current.deltaZ);
+    /* The port's: the mode's forward roll goes exactly to the pointer
+     * (pointer.h). */
+    s32 alongX = 0;
+    s32 alongY = 0;
+    if (step != 0 && pointerRollStep(npc.id, anim, dir, step, &alongX, &alongY)) {
+        next.x = static_cast<u16>(pos.x + alongX);
+        next.y = static_cast<u16>(pos.y + alongY);
+    }
     if (npc.isInCombat() != 0U) {
         const Npc target(npcs[npc.id].attackTarget);
         if (target.isValid() && info.flying) {

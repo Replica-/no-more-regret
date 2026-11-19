@@ -10,6 +10,7 @@
 #include "pointer.h"
 #include "shaphand.h"
 #include "utility.h"
+#include "wpncache.h"
 
 #include <algorithm>
 #include <cstring>
@@ -20,7 +21,8 @@ namespace {
  * animation's number, its AnimInfo and its frames (frames x directions
  * AnimFrames, the shape's frames numbered past its own); the first of the
  * imported frames and their count, the size of each and their bytes, as
- * the shape file holds a frame. Read when first asked for, into the game's
+ * the shape file holds a frame; "OVLY", the count of overlay types and the
+ * weapon overlays of each. Read when first asked for, into the game's
  * memory (the frames drawn are the game's, as missingFrame is), and this
  * record of them in the arena: a snapshot or a rewind takes both back
  * together, read or not. */
@@ -37,6 +39,8 @@ struct Imported {
     /* Each frame's start in bytes, and the end after the last. */
     u32 *starts;
     u8 *bytes;
+    u16 overlayTypes;
+    OverlayFrame *overlays;
 };
 Imported &imported = gameGlobal<Imported>();
 
@@ -80,6 +84,18 @@ void readImported()
         file.read(imported.bytes + imported.starts[i], static_cast<s32>(sizes[i]), -1);
     }
     delete[] sizes;
+    char overlayMagic[4];
+    if (file.read(overlayMagic, 4, -1) == 4 && std::memcmp(overlayMagic, "OVLY", 4) == 0 &&
+        file.read(&imported.overlayTypes, 2, -1) == 2) {
+        const u32 entries = static_cast<u32>(imported.entries) * imported.overlayTypes;
+        imported.overlays = new OverlayFrame[entries];
+        if (file.read(imported.overlays, static_cast<s32>(entries * sizeof(OverlayFrame)), -1) !=
+            static_cast<s32>(entries * sizeof(OverlayFrame))) {
+            delete[] imported.overlays;
+            imported.overlays = nullptr;
+            imported.overlayTypes = 0;
+        }
+    }
     file.close();
     imported.any = true;
 }
@@ -116,6 +132,15 @@ void importAnims(u16 shape, ActorAnim *table)
     action->allocate();
     std::memcpy(action->frameList, in->frames, std::min<std::size_t>(action->size(), in->entries * sizeof(AnimFrame)));
     table->setAction(static_cast<i16>(in->anim), action);
+}
+
+const OverlayFrame *importedOverlays(u16 anim, u16 type)
+{
+    const Imported *in = data();
+    if (in == nullptr || anim != in->anim || in->overlays == nullptr || type >= in->overlayTypes) {
+        return nullptr;
+    }
+    return in->overlays + (static_cast<u32>(type) * in->entries);
 }
 
 bool importedAnim(u16 shape, u16 anim)
@@ -172,5 +197,6 @@ void releaseImported()
     delete[] imported.frames;
     delete[] imported.starts;
     delete[] imported.bytes;
+    delete[] imported.overlays;
     imported = Imported{};
 }

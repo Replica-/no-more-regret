@@ -77,6 +77,11 @@ struct PointerAim {
     i16 rise;
 };
 bool pointerAim(PointerAim *aim);
+/* A frame's step of the NPC's animation (AnimPrimitive::frameDestination):
+ * the forward roll the mode gave the Silencer goes exactly towards the
+ * pointer, not the nearest of the directions, as far as the frame takes
+ * him that way (dir, step); false for any other. */
+bool pointerRollStep(u16 npc, i16 anim, char dir, i16 step, s32 *dx, s32 *dy);
 
 /* The world's gump's mouse in the mode: true when the mode took the event
  * (WorldGump::handleMouseMotion, mouseButton). */

@@ -12,6 +12,8 @@
 #include "npc.h"
 #include "fastflex.h"
 
+#include <cstring>
+
 void freeOverlays();
 u16 overlayTypeOf(u16 shape);
 
@@ -50,11 +52,18 @@ void loadOverlays(u16 weapon)
         info = animInfo(1, anim);
         i16 frames;
         /* The port's (imported.h): a quickened animation's overlays are
-         * its frames' before; an imported one has none. */
+         * its frames' before; an imported one's are No Regret's, imported
+         * with it. */
         if (const u8 original = quickenedFrames(1, static_cast<u16>(anim))) {
             info.frames = original;
         } else if (importedAnim(1, static_cast<u16>(anim))) {
-            info.frames = 0;
+            const OverlayFrame *from = importedOverlays(static_cast<u16>(anim), overlayType);
+            if (from != nullptr && info.frames != 0) {
+                const i16 count = static_cast<i16>(info.frames * (info.sixteenDirections ? 16 : 8));
+                overlays[anim] = reinterpret_cast<OverlayFrame *>(new char[count * sizeof(OverlayFrame)]);
+                std::memcpy(overlays[anim], from, count * sizeof(OverlayFrame));
+            }
+            continue;
         }
         if ((frames = info.frames) != 0 && info.attack) {
             i16 size;
@@ -173,11 +182,6 @@ bool hasWeaponOverlay(u16 weapon, u16 animation)
 {
     if (loadedWeapon != weapon) {
         loadOverlays(weapon);
-    }
-    /* The port's animation of No Regret's in No Remorse (imported.h): No
-     * Remorse's overlays are not made for its frames. */
-    if (importedAnim(1, animation)) {
-        return false;
     }
     return overlays[animation] != nullptr;
 }

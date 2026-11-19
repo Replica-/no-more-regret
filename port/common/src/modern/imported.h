@@ -3,7 +3,8 @@
  * has not the frames No Regret's is drawn with. port/tools/forward_roll.py
  * writes them from No Regret's data into No Remorse's static\fwdroll.dat;
  * with it, the frames are the shape's past its own (the animation's frames
- * numbered so) and the animation is the shape's. Without it, nothing. */
+ * numbered so) and the animation is the shape's, its weapon overlays
+ * No Regret's. Without it, nothing. */
 #ifndef PORT_IMPORTED_H
 #define PORT_IMPORTED_H
 #include "common.h"
@@ -22,6 +23,9 @@ void importAnims(u16 shape, ActorAnim *table);
  * weapon overlay's, 0 for an animation not made so. */
 void quickenAnims(u16 shape, ActorAnim *table);
 u8 quickenedFrames(u16 shape, u16 anim);
+/* The imported animation's weapon overlays of the overlay type (frames x
+ * directions), nullptr for none. */
+const struct OverlayFrame *importedOverlays(u16 anim, u16 type);
 /* Whether the shape's animation is the imported one. */
 bool importedAnim(u16 shape, u16 anim);
 /* Forgets them, read again when next asked for (closeShapeFiles: the

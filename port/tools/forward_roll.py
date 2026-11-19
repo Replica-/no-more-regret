@@ -2,7 +2,10 @@
 """Writes No Remorse's static/fwdroll.dat from No Regret's data: the
 Silencer's forward roll (animation 5 of shape 1 in anim.dat), which No
 Remorse's anim.dat has not, and the frames of shape 1 it is drawn with, which
-No Remorse's shape has not (common/src/modern/imported.h reads it). The frames
+No Remorse's shape has not, and the weapon overlays drawn over it (No
+Regret's wpnovlay.dat's for the animation, of each overlay type: the two
+games' overlay frames are numbered the same) (common/src/modern/imported.h
+reads it). The frames
 become the shape's past No Remorse's own (3960 on), the animation's frames
 numbered so; the two games' palettes are the same, so the frames' bytes are
 kept as they are.
@@ -37,6 +40,14 @@ def shape_frames(path, shape):
         length = struct.unpack_from('<I', data, 10 + 8 * i)[0]
         frames.append(data[start:start + length])
     return frames
+
+
+def overlays(path, anim):
+    """The weapon overlays of the animation in a wpnovlay.dat (a flex): each
+    overlay type's, one after the other."""
+    data = Path(path).read_bytes()
+    offset, size = struct.unpack_from('<II', data, 0x80 + 8 * anim)
+    return data[offset:offset + size]
 
 
 def animation(path, shape, anim):
@@ -83,6 +94,12 @@ def main():
     out += struct.pack('<HH', first, len(used))
     out += b''.join(struct.pack('<I', len(regret[f])) for f in used)
     out += b''.join(regret[f] for f in used)
+    directions = 16 if (info >> 30) & 1 else 8
+    table = overlays(static_file(args.regret, 'wpnovlay.dat'), ANIM)
+    per_type = (info & 0xff) * directions * 4
+    if per_type == 0 or len(table) % per_type != 0:
+        sys.exit("forward_roll: the overlays are not the animation's")
+    out += b'OVLY' + struct.pack('<H', len(table) // per_type) + table
     target = static_file(args.remorse, 'anim.dat').with_name('FWDROLL.DAT')
     target.write_bytes(out)
     print(f'forward_roll: {target}: {len(used)} frames from {first}, {len(renumbered)} animation frames')

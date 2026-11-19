@@ -98,6 +98,16 @@ struct Reach {
 };
 Reach &reach = gameGlobal<Reach>(Reach{});
 
+/* The forward roll the mode gave him: its angle (hud.h's angleOf) towards
+ * the pointer, and what of a map unit its steps have left over (in 256ths). */
+struct RollAim {
+    u8 on;
+    i16 angle;
+    s32 restX;
+    s32 restY;
+};
+RollAim &rollAim = gameGlobal<RollAim>();
+
 /* The most a turn to the pointer takes at a step, of the 16 directions,
  * and the ticks before the next step cuts the stand short (the stand runs
  * 7 or 8): the turn half as fast again as a quarter at a whole stand. */
@@ -130,6 +140,24 @@ u16 standAnim(Npc &npc)
 u32 now()
 {
     return systemTimer->time();
+}
+
+/* The forward roll about to start goes towards the pointer: he faces it,
+ * and its steps follow its angle (pointerRollStep). */
+void aimRoll(Npc &npc)
+{
+    ItemPoint aim;
+    pointerAimPoint(&aim);
+    const s32 dx = static_cast<s32>(aim.x) - static_cast<s32>(npc.centreX());
+    const s32 dy = static_cast<s32>(aim.y) - static_cast<s32>(npc.centreY());
+    if (std::abs(dx) + std::abs(dy) < FACE_DEAD_ZONE * 4) {
+        rollAim.on = 0;
+        return;
+    }
+    npc.setDirection(static_cast<u8>(fineDirection(static_cast<i16>(npc.centreX()), static_cast<i16>(npc.centreY()),
+                                                   static_cast<i16>(aim.x), static_cast<i16>(aim.y)) &
+                                     0xf));
+    rollAim = {1, angleOf(dx, dy), 0, 0};
 }
 
 /* A turn towards the pointer, the short way round, as far as TURN_STEP at
@@ -523,6 +551,10 @@ bool pointerKey(KeyEvent &key, Action action)
      * controller's roll); alone it walks to the pointer. */
     if (action == Action::MOVE_FORWARD && keyMode(&key, Action::ROLL)) {
         walkStop();
+        Npc npc(controlledActor);
+        if (key.pressed != 0U && key.repeat == 1 && !npc.isBusy()) {
+            aimRoll(npc);
+        }
         return false;
     }
     /* Kneeling, it rolls forward, towards the reticle (once a press). */
@@ -530,15 +562,8 @@ bool pointerKey(KeyEvent &key, Action action)
         walkStop();
         if (key.pressed != 0U && key.repeat == 1 && controller != nullptr) {
             Npc npc(controlledActor);
-            ItemPoint aim;
-            pointerAimPoint(&aim);
-            if (std::abs(static_cast<int>(aim.x) - static_cast<int>(npc.centreX())) +
-                    std::abs(static_cast<int>(aim.y) - static_cast<int>(npc.centreY())) >=
-                FACE_DEAD_ZONE * 4) {
-                npc.setDirection(static_cast<u8>(fineDirection(static_cast<i16>(npc.centreX()),
-                                                               static_cast<i16>(npc.centreY()),
-                                                               static_cast<i16>(aim.x), static_cast<i16>(aim.y)) &
-                                                 0xf));
+            if (!npc.isBusy()) {
+                aimRoll(npc);
             }
             KeyEvent roll = key;
             controller->actionKey(&roll, Action::ROLL_FORWARD);
@@ -667,11 +692,18 @@ void pointerTick()
     if (!npc.isBusy()) {
         waiting.turning = 0;
     }
+    /* A roll aimed and done, or another animation in its place. */
+    if (rollAim.on != 0U && npc.lastAnimSet() != ANIM_ROLL_FORWARD && !npc.isBusy()) {
+        rollAim.on = 0;
+    }
     if (waiting.at != 0U && now() - waiting.at > KEY_WAIT) {
         waiting.at = 0;
     }
     if (waiting.at != 0U && !npc.isBusy() && controller != nullptr) {
         waiting.at = 0;
+        if (waiting.action == Action::ROLL_FORWARD) {
+            aimRoll(npc);
+        }
         KeyEvent key = waiting.key;
         controller->actionKey(&key, waiting.action);
     }
@@ -808,5 +840,29 @@ bool pointerAim(PointerAim *aim)
     const int rise = std::min(spread / 3, 24);
     aim->spread = static_cast<i16>(launched > 0 ? spread * near / launched : 0);
     aim->rise = static_cast<i16>(launched > 0 ? rise * near / launched : 0);
+    return true;
+}
+
+bool pointerRollStep(u16 npc, i16 anim, char dir, i16 step, s32 *dx, s32 *dy)
+{
+    if (rollAim.on == 0U || npc != controlledActor || anim != ANIM_ROLL_FORWARD || !pointerMode()) {
+        return false;
+    }
+    /* As far as the frame's step goes along its direction, whose unit is 1,
+     * 2 or 5 squared (distance.h's directionX16, directionY16): in 256ths
+     * of a map unit, the rest carried to the next step. */
+    const int x = directionX16[static_cast<int>(dir) & 0xf];
+    const int y = directionY16[static_cast<int>(dir) & 0xf];
+    const int squared = (x * x) + (y * y);
+    const s32 length = static_cast<s32>(step) * (squared == 1 ? 256 : squared == 2 ? 362 : 572);
+    i16 alongX = 0;
+    i16 alongY = 0;
+    alongAngle(rollAim.angle, 1024, &alongX, &alongY);
+    const s32 wholeX = ((length * alongX) / 1024) + rollAim.restX;
+    const s32 wholeY = ((length * alongY) / 1024) + rollAim.restY;
+    *dx = wholeX / 256;
+    *dy = wholeY / 256;
+    rollAim.restX = wholeX - (*dx * 256);
+    rollAim.restY = wholeY - (*dy * 256);
     return true;
 }
