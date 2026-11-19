@@ -23,9 +23,6 @@ void walkStop();
 [[nodiscard]] bool walking();
 /* A tick: the next step when the Silencer is free. */
 void walkTick();
-/* The points of the path planned last, from the Silencer (for the
- * overlay): count of them in points. */
-u8 walkPath(const ItemPoint **points);
 /* The point a click walks to, on the floor where it was clicked, and the
  * ticks since the click: while the walk goes on and a moment after; false
  * when none is shown (a walk to an item, or the forward key's). */

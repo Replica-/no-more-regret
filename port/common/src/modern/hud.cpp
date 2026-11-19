@@ -42,7 +42,6 @@ namespace {
 const std::uint32_t SHADOW = 0x00000080;
 const std::uint32_t IN_REACH = 0x40e060ff;
 const std::uint32_t OUT_OF_REACH = 0xe04040ff;
-const std::uint32_t PATH = 0xf0d04060;
 const std::uint32_t SPREAD = 0xff3030d0;
 const std::uint32_t LASER = 0xff2020ff;
 
@@ -243,21 +242,6 @@ void walkMarker()
     }
 }
 
-void path()
-{
-    walkMarker();
-    if (!pathLineSetting()) {
-        return;
-    }
-    const ItemPoint *points = nullptr;
-    const u8 count = walkPath(&points);
-    for (u8 i = 0; i < count; i++) {
-        float x;
-        float y;
-        mapToOverlay(points[i].x, points[i].y, points[i].z, &x, &y);
-        overlayDisc(x, y, 1.5F, PATH);
-    }
-}
 
 void drawHud()
 {
@@ -290,7 +274,7 @@ void drawHud()
         }
         return;
     }
-    path();
+    walkMarker();
     drawJump();
     /* A screen over the world (the options, a message) has the game's own
      * pointer. */

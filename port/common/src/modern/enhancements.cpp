@@ -9,7 +9,6 @@
 namespace {
 
 bool &hardwareOn = gameSetting<bool>(true);
-bool &pathLineOn = gameSetting<bool>(false);
 bool &pickupsNearOn = gameSetting<bool>(true);
 
 /* An on and off setting of a flag. */
@@ -107,8 +106,7 @@ SettingColumns enhancementColumns()
 {
     return SettingColumns{{pointerControlsSetting(), hardwareChoice(), lightingChoice(), nativeSetting(), zoomSetting(),
                            coloursSetting()},
-                          {flagSetting(Words{"WALK PATH LINE", "이동 경로 선"}, pathLineOn),
-                           flagSetting(Words{"PICKUPS NEAR SOURCE", "획득 표시 위치"}, pickupsNearOn)}};
+                          {flagSetting(Words{"PICKUPS NEAR SOURCE", "획득 표시 위치"}, pickupsNearOn)}};
 }
 
 bool hardwareSetting()
@@ -121,11 +119,6 @@ void setHardwareSetting(bool on)
     hardwareOn = on;
 }
 
-bool pathLineSetting()
-{
-    return pathLineOn;
-}
-
 bool pickupsNearSetting()
 {
     return pickupsNearOn;
@@ -135,7 +128,6 @@ std::string enhancementsText()
 {
     std::string text;
     text += std::string("hardware=") + (hardwareOn ? "1" : "0") + "\r\n";
-    text += std::string("walk_path=") + (pathLineOn ? "1" : "0") + "\r\n";
     text += std::string("pickups_near=") + (pickupsNearOn ? "1" : "0") + "\r\n";
     text += "zoom=" + std::to_string(screenZoom()) + "\r\n";
     return text;
@@ -147,12 +139,9 @@ bool readEnhancement(const std::string &key, const std::string &value)
         hardwareOn = value != "0";
         return true;
     }
-    if (key == "walk_path") {
-        pathLineOn = value != "0";
-        return true;
-    }
-    /* The first name's, when the line was on by default: dropped. */
-    if (key == "path_line") {
+    /* The walk's path line, which is gone (walk_path=, and path_line=
+     * before it): dropped. */
+    if (key == "walk_path" || key == "path_line") {
         return true;
     }
     if (key == "pickups_near") {

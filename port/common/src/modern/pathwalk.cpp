@@ -570,12 +570,6 @@ bool walkMark(ItemPoint *point, u32 *age)
     return true;
 }
 
-u8 walkPath(const ItemPoint **points)
-{
-    *points = walk.points + walk.next;
-    return walk.active != 0U ? static_cast<u8>(walk.count - walk.next) : 0;
-}
-
 void walkTick()
 {
     Npc npc(controlledActor);

@@ -1,7 +1,7 @@
 /* The port's enhancements page of the settings (settings.h's ENHANCEMENTS
  * button): the keyboard and mouse controls, the lighting, the wide
- * screen and its zoom, the Silencer's colours, the walk's path line and
- * the pickups shown over their places, kept in enhanced.cfg. */
+ * screen and its zoom, the Silencer's colours and the pickups shown over
+ * their places, kept in enhanced.cfg. */
 #ifndef PORT_ENHANCEMENTS_H
 #define PORT_ENHANCEMENTS_H
 #include "settings.h"
@@ -18,10 +18,7 @@
  * (off with the original controls, the tests' screens the art's). */
 [[nodiscard]] bool hardwareSetting();
 void setHardwareSetting(bool on);
-/* The walk's path line (hud.cpp; off by default, a mark shows where a
- * click walks to) and the pickups shown over their places (popups.h, on by
- * default). */
-[[nodiscard]] bool pathLineSetting();
+/* The pickups shown over their places (popups.h, on by default). */
 [[nodiscard]] bool pickupsNearSetting();
 /* Their lines of enhanced.cfg, and a line read: true when it was one of
  * theirs. */
