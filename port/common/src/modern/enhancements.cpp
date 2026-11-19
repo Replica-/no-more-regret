@@ -10,6 +10,7 @@ namespace {
 
 bool &hardwareOn = gameSetting<bool>(true);
 bool &pickupsNearOn = gameSetting<bool>(true);
+bool &upscaledOn = gameSetting<bool>(true);
 
 /* An on and off setting of a flag. */
 Setting flagSetting(Words heading, bool &flag)
@@ -106,7 +107,8 @@ SettingColumns enhancementColumns()
 {
     return SettingColumns{{pointerControlsSetting(), hardwareChoice(), lightingChoice(), nativeSetting(), zoomSetting(),
                            coloursSetting()},
-                          {flagSetting(Words{"PICKUPS NEAR SOURCE", "획득 표시 위치"}, pickupsNearOn)}};
+                          {flagSetting(Words{"PICKUPS NEAR SOURCE", "획득 표시 위치"}, pickupsNearOn),
+                           flagSetting(Words{"UPSCALED TEXTURES", "업스케일 텍스처"}, upscaledOn)}};
 }
 
 bool hardwareSetting()
@@ -124,11 +126,17 @@ bool pickupsNearSetting()
     return pickupsNearOn;
 }
 
+bool upscaledSetting()
+{
+    return upscaledOn;
+}
+
 std::string enhancementsText()
 {
     std::string text;
     text += std::string("hardware=") + (hardwareOn ? "1" : "0") + "\r\n";
     text += std::string("pickups_near=") + (pickupsNearOn ? "1" : "0") + "\r\n";
+    text += std::string("upscaled=") + (upscaledOn ? "1" : "0") + "\r\n";
     text += "zoom=" + std::to_string(screenZoom()) + "\r\n";
     return text;
 }
@@ -146,6 +154,10 @@ bool readEnhancement(const std::string &key, const std::string &value)
     }
     if (key == "pickups_near") {
         pickupsNearOn = value != "0";
+        return true;
+    }
+    if (key == "upscaled") {
+        upscaledOn = value != "0";
         return true;
     }
     if (key == "zoom") {

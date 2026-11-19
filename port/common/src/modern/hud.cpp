@@ -29,6 +29,7 @@
 #include "mousectl.h"
 #include "world.h"
 #include "missionmap.h"
+#include "upscaled.h"
 #include "type.h"
 #include "viewport.h"
 
@@ -285,6 +286,7 @@ void drawHud()
         drawMenuPointer();
         return;
     }
+    drawUpscaled();
     drawColoursLayer();
     drawLighting();
     drawBlood();

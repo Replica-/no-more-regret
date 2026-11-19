@@ -1,7 +1,7 @@
 /* The port's enhancements page of the settings (settings.h's ENHANCEMENTS
  * button): the keyboard and mouse controls, the lighting, the wide
- * screen and its zoom, the Silencer's colours and the pickups shown over
- * their places, kept in enhanced.cfg. */
+ * screen and its zoom, the Silencer's colours, the pickups shown over
+ * their places and the upscaled textures, kept in enhanced.cfg. */
 #ifndef PORT_ENHANCEMENTS_H
 #define PORT_ENHANCEMENTS_H
 #include "settings.h"
@@ -20,6 +20,9 @@
 void setHardwareSetting(bool on);
 /* The pickups shown over their places (popups.h, on by default). */
 [[nodiscard]] bool pickupsNearSetting();
+/* The upscaled textures (upscaled.h, on by default; with the hardware
+ * scene only). */
+[[nodiscard]] bool upscaledSetting();
 /* Their lines of enhanced.cfg, and a line read: true when it was one of
  * theirs. */
 [[nodiscard]] std::string enhancementsText();

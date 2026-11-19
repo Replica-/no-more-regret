@@ -8,6 +8,7 @@
 #include <cstring>
 #include "shaphand.h"
 #include "imported.h"
+#include "upscaled.h"
 #include "cache.h"
 #include "cache_game.h"
 #include "clock.h"
@@ -511,6 +512,7 @@ void closeShapeFiles()
     delete frameCache;
     frameCache = nullptr;
     releaseImported();
+    releaseUpscaled();
 }
 
 /* Copies the shapes the game keeps from the swap file into a new shape file,
