@@ -12,7 +12,6 @@
 #include "itemdata.h"
 #include "shaphand.h"
 #include "spmgr.h"
-#include "npc.h"
 #include "overlay.h"
 #include "screen.h"
 #include "shape.h"
@@ -34,15 +33,13 @@ namespace {
  * MOST_STRAY are stray pixels of the art, no light) and its reach in
  * pixels, NEAREST for the faintest and FARTHEST for the full one, half as
  * far up and down (the floor seen at its angle, as the isometric view has
- * it); the Silencer's: its strength and reach. */
+ * it). */
 const int MOST_PIXELS = WIDE_FRAME_MOST * TALL_FRAME_MOST;
 const float SHADE = 56;
 const int GLOWING = 24;
 const int MOST_STRAY = 6;
 const float NEAREST = 14;
 const float FARTHEST = 54;
-const float OWN_LIGHT = 0.5F;
-const float OWN_REACH = 64;
 
 /* The palette's light colours: 1-7 (yellows to red, which the palette
  * cycles), 8-14 (the translucent glows) and the lone bright entries
@@ -74,10 +71,8 @@ int frameTop = 0;
  * scene the light the screen is multiplied by and the glow added to it. */
 std::uint32_t multiplied[MOST_PIXELS];
 std::uint32_t added[MOST_PIXELS];
-/* The Silencer's own light's colour, a warm white; how much of the light's
- * colour tints the light (of 256), and how much of it is added as a glow
- * (of 255). */
-const std::uint32_t OWN_TINT = 0xfff2e0;
+/* How much of the light's colour tints the light (of 256), and how much of
+ * it is added as a glow (of 255). */
 const int TINTED = 77;
 const int GLOW = 46;
 
@@ -269,19 +264,6 @@ void glows()
     }
 }
 
-/* The soft light round the controlled NPC. */
-void ownLight()
-{
-    Npc npc(controlledNpc.id);
-    if (!npc.isValid()) {
-        return;
-    }
-    float x;
-    float y;
-    mapToOverlay(npc.centreX(), npc.centreY(), static_cast<i16>(npc.z() + 20), &x, &y);
-    lightAt(x, y, OWN_LIGHT, OWN_TINT, OWN_REACH);
-}
-
 /* The pictures over the frame: with the hardware scene (enhancements.h)
  * the screen multiplied by the light in its colour (the shade where
  * nothing lights, the art's own where the light is full) and the light's
@@ -361,6 +343,5 @@ void drawLighting()
     frameTop = (frameHeight - SCREEN_HEIGHT) / 2;
     findStatus();
     glows();
-    ownLight();
     layLight();
 }

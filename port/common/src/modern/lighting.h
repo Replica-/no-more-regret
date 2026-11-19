@@ -4,8 +4,7 @@
  * entries of lamps, LEDs and screens), an item's but a floor's or an NPC's,
  * or a sprite's, lights the screen round its glowing pixels, fading with
  * the distance, the brightest winning where lights meet: lamps, screens,
- * fire, shots and explosions light the dark. A soft light follows the
- * Silencer so that the dark stays readable. The status display stays
+ * fire, shots and explosions light the dark. The status display stays
  * as it is. Each light is worked out for each pixel of the frame, a
  * short reach fading smoothly, and drawn over the game (platform/overlay.h):
  * a layer of shade, or with the hardware scene (enhancements.h) the screen
