@@ -8,6 +8,7 @@
 #include "camera.h"
 #include "crusys.h"
 #include "dispatch.h"
+#include "effects.h"
 #include "gamepal.h"
 #include "hittest.h"
 #include "item.h"
@@ -116,6 +117,13 @@ void DL_ItemNode::draw()
     ShapeFrame *image = cachedShapeFrame(shape, frame);
     if (image != nullptr) {
         const u16 nodeFlags = itemFlags[nodeItem.id];
+        /* The port's: a fire the hardware scene draws instead, what was
+         * under it kept (effects.h). */
+        const bool fire = effectsReplaces(shape);
+        if (fire) {
+            effectsItemDrawing(drawView, nodeItem.id, frame, true, false, static_cast<i16>(screenX - scrollX),
+                               static_cast<i16>(screenY - scrollY), 0, 0);
+        }
         if ((nodeFlags & ITEM_FLIPPED) != 0) {
             if ((nodeFlags & ITEM_INVISIBLE) != 0) {
                 drawView.drawShapeMirroredTranslucent(screenX - scrollX, screenY - scrollY, image,
@@ -137,6 +145,10 @@ void DL_ItemNode::draw()
                    !drawInColours(drawView, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY),
                                   image, false)) {
             drawView.drawShape(screenX - scrollX, screenY - scrollY, image);
+        }
+        if (fire) {
+            effectsItemDrawing(drawView, nodeItem.id, frame, false, false, static_cast<i16>(screenX - scrollX),
+                               static_cast<i16>(screenY - scrollY), 0, 0);
         }
     }
     /* The port's: the blood on a floor, under what stands on it (blood.h). */
