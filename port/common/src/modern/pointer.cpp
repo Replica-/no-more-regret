@@ -1,5 +1,6 @@
 /* The port's keyboard and mouse controls. See pointer.h. */
 #include "pointer.h"
+#include "animcach.h"
 #include "gamestate.h"
 #include "animprim.h"
 #include "camera.h"
@@ -122,19 +123,21 @@ bool combatPose()
     return inCombatStance() && !inPeacefulStance();
 }
 
-/* The stand of his stance, which a turn is made of (turnFrom's). */
+/* The stand of his stance, which a turn is made of (turnFrom's); a
+ * robot's plain stand when its shape has not that one. */
 u16 standAnim(Npc &npc)
 {
+    u16 anim = ANIM_STAND;
     if (npc.isKneeling() != 0U) {
-        return ANIM_KNEELING_SMALL;
-    }
-    /* His pose, not the flag: No Regret's teleport in leaves him in combat
-     * standing as at peace, and the original's controls go by the pose. */
-    if (npc.isInCombat() != 0U && combatPose()) {
+        anim = ANIM_KNEELING_SMALL;
+    } else if (npc.isInCombat() != 0U && combatPose()) {
+        /* His pose, not the flag: No Regret's teleport in leaves him in
+         * combat standing as at peace, and the original's controls go by
+         * the pose. */
         const Item gun(npc.activeWeapon());
-        return gun.isValid() && smallWeapon(gun.shape()) == 0U ? ANIM_COMBAT_STAND_LARGE : ANIM_COMBAT_STAND_SMALL;
+        anim = gun.isValid() && smallWeapon(gun.shape()) == 0U ? ANIM_COMBAT_STAND_LARGE : ANIM_COMBAT_STAND_SMALL;
     }
-    return ANIM_STAND;
+    return hasAnim(npc.shape(), anim) ? anim : static_cast<u16>(ANIM_STAND);
 }
 
 u32 now()
@@ -188,15 +191,20 @@ bool turnFree(Npc &npc)
     return true;
 }
 
-/* The Silencer's weapon out, or being drawn: the flag and his pose. */
+/* The Silencer's weapon out, or being drawn: the flag and his pose. A
+ * robot's (or another NPC's the player controls) is always out: it neither
+ * draws nor holsters. */
 bool weaponOut(Npc &npc)
 {
+    if (!npc.isSilencer()) {
+        return true;
+    }
     return npc.isWeaponDrawn() != 0U && combatPose();
 }
 
 bool drawing(Npc &npc)
 {
-    return npc.isBusy() && npc.lastAnimSet() == ANIM_READY_SMALL;
+    return npc.isSilencer() && npc.isBusy() && npc.lastAnimSet() == ANIM_READY_SMALL;
 }
 
 /* The draw: with the weapon drawn already, standing as at peace (No
@@ -305,6 +313,9 @@ void rightRelease()
         return;
     }
     Npc npc(controlledActor);
+    if (!npc.isSilencer()) {
+        return;
+    }
     if (cancel) {
         holster(npc, true);
     } else if (weaponOut(npc) && !npc.isBusy()) {
@@ -345,11 +356,13 @@ void setPointerSetting(bool on)
 
 bool pointerMode()
 {
-    if (!pointerOn || worldActive == 0U || controller == nullptr || controlledActor != 1) {
+    if (!pointerOn || worldActive == 0U || controller == nullptr || controlledActor == 0U) {
         return false;
     }
+    /* Whoever the player controls: the Silencer, or a robot taken over
+     * (the Silencer held by a script is not the player's). */
     Npc npc(controlledActor);
-    return npc.isValid() && npc.isDead() == 0U && controlledNpc.held == 0U;
+    return npc.isValid() && npc.isDead() == 0U && (!npc.isSilencer() || controlledNpc.held == 0U);
 }
 
 i16 pointerScreenX()
@@ -485,7 +498,8 @@ bool pointerButton(u8 right, NewGumpEvent *event)
         return true;
     }
     buttons.leftTaken = 1;
-    if (out) {
+    /* The Silencer puts his weapon away to walk; a robot's stays out. */
+    if (out && npc.isSilencer()) {
         holster(npc, isDrawing);
     }
     const i16 x = pointerScreenX();

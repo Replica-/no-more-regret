@@ -1,5 +1,6 @@
 /* The pointer mode's walk. See pathwalk.h. */
 #include "pathwalk.h"
+#include "animcach.h"
 #include "gamestate.h"
 #include "animprim.h"
 #include "camera.h"
@@ -688,6 +689,18 @@ void walkTick()
     steps[stepCount++] = {static_cast<u16>(armed ? ANIM_ADVANCE_SMALL : ANIM_WALK), 64};
     if (armed) {
         steps[stepCount++] = {ANIM_WALK, 64};
+    }
+    /* A robot's shape has not all of them. */
+    int kept = 0;
+    for (int s = 0; s < stepCount; s++) {
+        if (hasAnim(shape, steps[s].anim)) {
+            steps[kept++] = steps[s];
+        }
+    }
+    stepCount = kept;
+    if (stepCount == 0) {
+        blocked(8);
+        return;
     }
     /* The steps that fit, each scored by where its stride ends: how far
      * along the plan (its points are CELL apart) less twice how far off
