@@ -237,97 +237,6 @@ void flash(float x, float y, float strength)
 }
 
 
-/* What was under a fire the game drew: the frame's box on the map's screen
- * (the screen's pixels with the scroll), what was there before the frame and
- * after it, which pixels of the box were drawn (known), and which of the
- * frame's pixels show now (seen: 1 shown, 2 hidden by what is in front). The
- * screen's and the wide screen's sides' apart: the sides draw it again at
- * each frame, a part at a time. */
-const int COVER_SIDE = 192;
-const u32 COVER_KEEP = 60;
-struct Cover {
-    u16 item;
-    bool sides;
-    bool used;
-    u16 frame;
-    int left;
-    int top;
-    int width;
-    int height;
-    u32 at;
-    u8 under[COVER_SIDE * COVER_SIDE];
-    u8 drawn[COVER_SIDE * COVER_SIDE];
-    u8 known[COVER_SIDE * COVER_SIDE];
-    u8 seen[COVER_SIDE * COVER_SIDE];
-};
-Cover covers[24];
-Cover *drawing = nullptr;
-
-/* The frame's box at the origin x,y: its top left corner and size. */
-bool frameBox(u16 shape, u16 frame, bool mirrored, int x, int y, int *left, int *top, int *width, int *height)
-{
-    ShapeFrame *image = cachedShapeFrame(shape, frame);
-    if (image == nullptr) {
-        return false;
-    }
-    const auto *bytes = reinterpret_cast<const u8 *>(image);
-    const s32 w = drawframe::dword(bytes + 4);
-    const s32 h = drawframe::dword(bytes + 8);
-    const s32 originX = mirrored ? w - 1 - drawframe::dword(bytes + 0xc) : drawframe::dword(bytes + 0xc);
-    *left = x - originX;
-    *top = y - drawframe::dword(bytes + 0x10);
-    *width = w;
-    *height = h;
-    return w > 0 && h > 0 && w <= COVER_SIDE && h <= COVER_SIDE;
-}
-
-Cover *coverOf(u16 item, bool sides)
-{
-    Cover *unused = nullptr;
-    Cover *oldest = &covers[0];
-    for (Cover &cover : covers) {
-        if (cover.used && cover.item == item && cover.sides == sides) {
-            return &cover;
-        }
-        if (!cover.used && unused == nullptr) {
-            unused = &cover;
-        }
-        if (cover.at < oldest->at) {
-            oldest = &cover;
-        }
-    }
-    Cover *cover = unused != nullptr ? unused : oldest;
-    cover->used = true;
-    cover->item = item;
-    cover->sides = sides;
-    cover->width = 0;
-    return cover;
-}
-
-/* The pixels of view's within its bounds in the cover's box (its top left
- * corner at viewLeft,viewTop on view), into out; marked known, when mark. */
-void copyBox(Viewport &view, Cover &cover, int viewLeft, int viewTop, u8 *out, bool mark)
-{
-    const ViewportPixels pixels = view.pixels();
-    for (int row = 0; row < cover.height; row++) {
-        const int y = viewTop + row;
-        if (y < pixels.top || y > pixels.bottom) {
-            continue;
-        }
-        for (int column = 0; column < cover.width; column++) {
-            const int x = viewLeft + column;
-            if (x < pixels.left || x > pixels.right) {
-                continue;
-            }
-            const int i = (row * cover.width) + column;
-            out[i] = pixels.pixels[pixels.rows[y] + static_cast<u32>(x)];
-            if (mark) {
-                cover.known[i] = 1;
-            }
-        }
-    }
-}
-
 /* A random number from 0 to 1, the scene's own (not the game's). */
 std::uint32_t seed = 0x9e3779b9U;
 float random01()
@@ -463,7 +372,6 @@ struct Volume {
     float top;
     float right;
     float bottom;
-    const Cover *cover;
 };
 Volume volumeNow;
 
@@ -479,7 +387,7 @@ void volumePoint(float u, float v, float w, float *x, float *y)
 /* The shape's box at the map's point: its footprint (16 map units a step
  * across, the x and y swapped for a flipped item) and its height (8 a
  * step), at least a flame's. */
-void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ, const Cover *cover)
+void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ)
 {
     const ShapeInfo &info = typeFlags.infos[shape];
     float across = static_cast<float>(std::max<int>(1, info.x)) * 16;
@@ -494,7 +402,6 @@ void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ, const Cover
     box.y0 = static_cast<float>(mapY) - deep;
     box.z0 = mapZ;
     box.height = std::max(24.0F, static_cast<float>(info.z) * 8);
-    box.cover = cover;
     box.left = 1e9F;
     box.top = 1e9F;
     box.right = -1e9F;
@@ -639,22 +546,6 @@ void splat(const Canvas &at, float x, float y, float radius, float red, float gr
     }
 }
 
-/* Whether the screen's x,y is on a pixel of the item's frame that what is
- * in front hides (its cover's), when the game draws the item. */
-bool hiddenAt(float x, float y)
-{
-    const Cover *cover = volumeNow.cover;
-    if (cover == nullptr) {
-        return false;
-    }
-    const int column = static_cast<int>(std::floor(x)) - (cover->left - scrollX);
-    const int row = static_cast<int>(std::floor(y)) - (cover->top - scrollY);
-    if (column < 0 || row < 0 || column >= cover->width || row >= cover->height) {
-        return false;
-    }
-    return cover->seen[(row * cover->width) + column] == 2;
-}
-
 /* The fire drawn from its origin ox,oy: its body (its frame's pixels that
  * show, their heat flickering), its flames, embers and smoke. */
 void drawFire(const Fire &fire, bool burning, float ox, float oy)
@@ -704,9 +595,6 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
                     float x = 0;
                     float y = 0;
                     volumePoint(u, v, w, &x, &y);
-                    if (hiddenAt(x, y)) {
-                        continue;
-                    }
                     const float flicker = noise((u * 5) + (static_cast<float>(level) * 9), (v * 5) + (t * 7.0F));
                     const float heat = (level == 0 ? 0.85F : 0.6F) * (0.55F + (0.6F * flicker));
                     fireColour(heat, &red, &green, &blue);
@@ -720,9 +608,6 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
         const Particle &p = fire.particles[i];
         const float x = ox + p.x;
         const float y = oy + p.y;
-        if (hiddenAt(x, y)) {
-            continue;
-        }
         const float left = 1.0F - (p.age / p.life);
         switch (p.kind) {
         case Kind::FLAME: {
@@ -763,7 +648,7 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
 
 /* A fire's ticks and pictures: key's, at the map's point, as large as
  * shape's box (volumeOf); with a glow round it, flickering. */
-void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored, const Cover *cover)
+void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored)
 {
     Fire *fire = fireOf(key);
     if (fire == nullptr) {
@@ -776,7 +661,7 @@ void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored, const
     float x;
     float y;
     mapToOverlay(mapX, mapY, mapZ, &x, &y);
-    volumeOf(shape, mirrored, mapX, mapY, mapZ, cover);
+    volumeOf(shape, mirrored, mapX, mapY, mapZ);
     const u32 time = now();
     for (u32 steps = std::min<u32>(time - fire->tick, 6); steps > 0; steps--) {
         tickFire(*fire, true, x, y);
@@ -880,102 +765,11 @@ void drawGun(const Gun &gun)
     overlayPictureAs(picture, w, h, left, top, static_cast<float>(w), static_cast<float>(h), OverlayBlend::BLEND, false);
 }
 
-/* The cover of the item the game drew on the screen lately. */
-const Cover *freshCover(u16 item)
-{
-    for (const Cover &cover : covers) {
-        if (cover.used && !cover.sides && cover.item == item && now() - cover.at <= COVER_KEEP) {
-            return &cover;
-        }
-    }
-    return nullptr;
-}
-
 }
 
 bool effectsReplaces(u16 shape)
 {
     return isFire(shape) && on();
-}
-
-void effectsItemDrawing(Viewport &view, u16 item, u16 frame, bool before, bool sides, i16 x, i16 y, i16 toScreenX,
-                        i16 toScreenY)
-{
-    if (!before) {
-        if (drawing != nullptr) {
-            copyBox(view, *drawing, drawing->left - scrollX - toScreenX, drawing->top - scrollY - toScreenY,
-                    drawing->drawn, true);
-            drawing->at = now();
-        }
-        drawing = nullptr;
-        return;
-    }
-    drawing = nullptr;
-    int left = 0;
-    int top = 0;
-    int width = 0;
-    int height = 0;
-    if (!frameBox(itemShape[item], frame, (itemFlags[item] & ITEM_FLIPPED) != 0, x, y, &left, &top, &width, &height)) {
-        return;
-    }
-    /* On the map's screen: the screen's pixels with the scroll. */
-    const int mapLeft = left + toScreenX + scrollX;
-    const int mapTop = top + toScreenY + scrollY;
-    Cover *cover = coverOf(item, sides);
-    if (cover->frame != frame || cover->left != mapLeft || cover->top != mapTop || cover->width != width ||
-        cover->height != height) {
-        cover->frame = frame;
-        cover->left = mapLeft;
-        cover->top = mapTop;
-        cover->width = width;
-        cover->height = height;
-        std::fill_n(cover->known, width * height, static_cast<u8>(0));
-        std::fill_n(cover->seen, width * height, static_cast<u8>(0));
-    }
-    copyBox(view, *cover, left, top, cover->under, false);
-    drawing = cover;
-}
-
-void drawEffectCovers()
-{
-    if (!on()) {
-        for (Cover &cover : covers) {
-            cover.used = false;
-        }
-        return;
-    }
-    const u32 time = now();
-    const RGB *colours = gamePalette->data.get();
-    for (Cover &cover : covers) {
-        if (!cover.used) {
-            continue;
-        }
-        if (time - cover.at > COVER_KEEP || !isFire(itemShape[cover.item]) ||
-            (itemFlags[cover.item] & ITEM_CONTAINED) != 0) {
-            cover.used = false;
-            continue;
-        }
-        const int left = cover.left - scrollX;
-        const int top = cover.top - scrollY;
-        for (int i = 0; i < cover.width * cover.height; i++) {
-            picture[i] = 0;
-            cover.seen[i] = 0;
-            if (cover.known[i] == 0U || cover.drawn[i] == cover.under[i]) {
-                continue;
-            }
-            if (!frameShows(left + (i % cover.width), top + (i / cover.width), cover.drawn[i])) {
-                cover.seen[i] = 2;
-                continue;
-            }
-            cover.seen[i] = 1;
-            const RGB &c = colours[cover.under[i]];
-            picture[i] = (static_cast<std::uint32_t>((c.red * 255) / 63) << 24) |
-                         (static_cast<std::uint32_t>((c.green * 255) / 63) << 16) |
-                         (static_cast<std::uint32_t>((c.blue * 255) / 63) << 8) | 0xffU;
-        }
-        overlayPictureAs(picture, cover.width, cover.height, static_cast<float>(left), static_cast<float>(top),
-                         static_cast<float>(cover.width), static_cast<float>(cover.height), OverlayBlend::BLEND, true);
-    }
 }
 
 void effectsDropGun(u16 npc)
@@ -1074,13 +868,16 @@ void drawEffects()
     for (int c = std::max(0, column - 3); c <= std::min(CHUNKS - 1, column + 3); c++) {
         for (int r = std::max(0, row - 3); r <= std::min(CHUNKS - 1, row + 3); r++) {
             for (u16 item = mapChunks[c][r]; item != 0U; item = itemNext[item]) {
+                /* Not an editor's mark, which the game does not draw (a
+                 * jet's place, PLACE ME, burns only as the jet does). */
                 if (item < FIRST_ITEM || !isEffect(itemShape[item]) ||
-                    (itemFlags[item] & (ITEM_CONTAINED | ITEM_INVISIBLE)) != 0) {
+                    (itemFlags[item] & (ITEM_CONTAINED | ITEM_INVISIBLE)) != 0 ||
+                    typeFlags.infos[itemShape[item]].editor) {
                     continue;
                 }
                 if (isFire(itemShape[item])) {
                     burn(item, itemX[item], itemY[item], itemZ[item], itemShape[item],
-                         (itemFlags[item] & ITEM_FLIPPED) != 0, freshCover(item));
+                         (itemFlags[item] & ITEM_FLIPPED) != 0);
                     continue;
                 }
                 float x;
@@ -1112,7 +909,7 @@ void drawEffects()
         if (since > FIRE_LINGERS) {
             continue;
         }
-        burn(fire.key, fire.x, fire.y, fire.z, LEFT_FIRE, false, nullptr);
+        burn(fire.key, fire.x, fire.y, fire.z, LEFT_FIRE, false);
         lingering[kept++] = fire;
     }
     lingeringCount = kept;
@@ -1129,7 +926,6 @@ void drawEffects()
         float x;
         float y;
         mapToOverlay(fire.mapX, fire.mapY, fire.mapZ, &x, &y);
-        volumeNow.cover = nullptr;
         for (u32 steps = std::min<u32>(time - fire.tick, 6); steps > 0; steps--) {
             tickFire(fire, false, x, y);
         }

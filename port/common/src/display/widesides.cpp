@@ -357,10 +357,8 @@ void drawItem(Viewport &view, const SideItem &side, i16 shift, i16 down)
     const i16 y = static_cast<i16>(side.screenY - scrollY + down);
     const u16 flags = itemFlags[side.item];
     /* The port's: a fire the hardware scene draws instead (effects.h). */
-    const bool fire = effectsReplaces(shape);
-    if (fire) {
-        effectsItemDrawing(view, side.item, side.frame, true, true, x, y, static_cast<i16>(-shift),
-                           static_cast<i16>(-down));
+    if (effectsReplaces(shape)) {
+        return;
     }
     if ((flags & ITEM_FLIPPED) != 0) {
         if ((flags & ITEM_INVISIBLE) != 0) {
@@ -377,10 +375,6 @@ void drawItem(Viewport &view, const SideItem &side, i16 shift, i16 down)
     } else if (!Item(side.item).isSilencer() || !drawInColours(view, x, y, image, false)) {
         /* The port's: the Silencer in his colours (colours.h). */
         view.drawShape(x, y, image);
-    }
-    if (fire) {
-        effectsItemDrawing(view, side.item, side.frame, false, true, x, y, static_cast<i16>(-shift),
-                           static_cast<i16>(-down));
     }
 }
 

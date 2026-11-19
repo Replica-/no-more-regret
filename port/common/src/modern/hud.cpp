@@ -258,7 +258,6 @@ void drawHud()
         return;
     }
     drawColoursLayer();
-    drawEffectCovers();
     drawLighting();
     drawBlood();
     drawEffects();

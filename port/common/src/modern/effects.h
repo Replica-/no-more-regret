@@ -14,21 +14,12 @@
 class Viewport;
 
 /* The fires (the jets of flame and the flames a blast leaves) are not the
- * game's frames, nor in their shape (an editor's mark of PLACE ME is one),
- * but fire of the scene's own as large as the item's box, its footprint and
- * height: a glowing body and the tongues of flame, embers and smoke it
- * gives off. Where the game draws the frame, what stands in front of the
- * fire hides it; what was under the frame is kept as it is drawn and put
- * back over it. */
+ * game's frames: the game draws none of them (effectsReplaces), and the
+ * editor's marks of their places (PLACE ME) none at all. The fire is the
+ * scene's own, as large as the item's box, its footprint and height: a
+ * glowing body and the tongues of flame, embers and smoke it gives off,
+ * over what stands in front of it. */
 [[nodiscard]] bool effectsReplaces(u16 shape);
-/* Before (before) and after the game draws item's frame on view at x,y
- * (DL_ItemNode::draw, the wide screen's sides' drawItem, sides); toScreenX
- * and toScreenY take view's pixels to the screen's. */
-void effectsItemDrawing(Viewport &view, u16 item, u16 frame, bool before, bool sides, i16 x, i16 y, i16 toScreenX,
-                        i16 toScreenY);
-/* Puts back what was under the fires the game drew (hud.cpp, before the
- * lighting, which shades it as the rest). */
-void drawEffectCovers();
 /* Draws them over the world (hud.cpp, after the lighting). */
 void drawEffects();
 /* The NPC died (loot.h): its gun is flung out of its hand, turning over,
