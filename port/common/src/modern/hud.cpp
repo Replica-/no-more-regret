@@ -48,7 +48,7 @@ const std::uint32_t LASER = 0xff2020ff;
  * on the screen (pixels from his middle across, half as much up and down,
  * he being tall), his frames' angles not those of a beam so short; it fades
  * in over the next LASER_FADE. */
-const float LASER_NEAREST = 36;
+const float LASER_NEAREST = 108;
 const float LASER_FADE = 16;
 
 /* Ticks a hit NPC's health bar is shown, the last of them fading. */
