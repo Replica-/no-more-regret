@@ -44,6 +44,12 @@ const std::uint32_t IN_REACH = 0x40e060ff;
 const std::uint32_t OUT_OF_REACH = 0xe04040ff;
 const std::uint32_t SPREAD = 0xff3030d0;
 const std::uint32_t LASER = 0xff2020ff;
+/* The laser is not drawn where it meets something this near the Silencer
+ * on the screen (pixels from his middle across, half as much up and down,
+ * he being tall), his frames' angles not those of a beam so short; it fades
+ * in over the next LASER_FADE. */
+const float LASER_NEAREST = 36;
+const float LASER_FADE = 16;
 
 /* Ticks a hit NPC's health bar is shown, the last of them fading. */
 const u32 BAR_SHOWN = 135;
@@ -129,7 +135,8 @@ void arrowCursor(float x, float y, int badge)
  * the point aimed at, as far apart as the shots scatter there (a map spread
  * s is s across the screen and s/2 down, the rise above it), and a laser
  * dot on what the shot meets first, with a short beam fading back towards
- * the Silencer. */
+ * the Silencer; neither when it meets something close to him
+ * (LASER_NEAREST). */
 bool aimMarks()
 {
     PointerAim aim;
@@ -154,6 +161,20 @@ bool aimMarks()
     const float dx = fromX - stopX;
     const float dy = fromY - stopY;
     const float length = std::max(std::abs(dx), std::abs(dy));
+    Npc silencer(controlledActor);
+    float middleX;
+    float middleY;
+    mapToOverlay(silencer.centreX(), silencer.centreY(),
+                 static_cast<i16>(silencer.z() + (typeFlags.info(silencer.shape()).z * 4)), &middleX, &middleY);
+    const float near = std::max(std::abs(stopX - middleX), std::abs(stopY - middleY) / 2);
+    const float shown = std::clamp((near - LASER_NEAREST) / LASER_FADE, 0.0F, 1.0F);
+    if (shown <= 0) {
+        return aim.hits;
+    }
+    /* A colour's alpha (its low byte) by how much the laser shows. */
+    const auto faded = [shown](std::uint32_t colour) {
+        return (colour & 0xffffff00U) | static_cast<std::uint32_t>(static_cast<float>(colour & 0xffU) * shown);
+    };
     if (length > 1) {
         /* Sixty-four pixels of beam at most, in steps that fade: a soft
          * glow round a bright core. */
@@ -164,13 +185,13 @@ bool aimMarks()
             const float b = reach * static_cast<float>(i + 1) / steps;
             const auto fade = static_cast<std::uint32_t>(steps - i);
             overlayLine(stopX + (dx * a), stopY + (dy * a), stopX + (dx * b), stopY + (dy * b), 4.5F,
-                        (LASER & 0xffffff00U) | (0x48U * fade / steps));
+                        faded((LASER & 0xffffff00U) | (0x48U * fade / steps)));
             overlayLine(stopX + (dx * a), stopY + (dy * a), stopX + (dx * b), stopY + (dy * b), 2.2F,
-                        (LASER & 0xffffff00U) | (0xe8U * fade / steps));
+                        faded((LASER & 0xffffff00U) | (0xe8U * fade / steps)));
         }
     }
-    overlayDisc(stopX, stopY, aim.blocked ? 3.2F : 2.6F, SHADOW);
-    overlayDisc(stopX, stopY, aim.blocked ? 2.4F : 1.9F, LASER);
+    overlayDisc(stopX, stopY, aim.blocked ? 3.2F : 2.6F, faded(SHADOW));
+    overlayDisc(stopX, stopY, aim.blocked ? 2.4F : 1.9F, faded(LASER));
     return aim.hits;
 }
 
