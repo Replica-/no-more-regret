@@ -720,6 +720,13 @@ void pointerTick()
         (npc.lastAnimSet() == ANIM_TELEPORT_IN || npc.lastAnimSet() == ANIM_STAND)) {
         npc.doAnim(readyAnim(npc), DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
     }
+    /* The other way about: a script's combat run (No Regret's mission 1
+     * start) leaves him in the combat stand, the gun in his hand, with the
+     * weapon not drawn; drawn it is. */
+    if (npc.isWeaponDrawn() == 0U && npc.activeWeapon() != 0U && npc.isKneeling() == 0U && !npc.isBusy() &&
+        (npc.lastAnimSet() == ANIM_COMBAT_STAND_SMALL || npc.lastAnimSet() == ANIM_COMBAT_STAND_LARGE)) {
+        npcs[npc.id].weaponDrawn = 1;
+    }
     if (buttons.pendingDraw != 0U && !npc.isBusy()) {
         buttons.pendingDraw = 0;
         if (!weaponOut(npc)) {
