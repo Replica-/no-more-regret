@@ -34,6 +34,20 @@ const u32 FIRE_LINGERS = 360;
 /* A muzzle flash's ticks. */
 const u32 FLASH_TICKS = 6;
 
+/* The square root of value (0 or more), by Newton's steps: no C library's
+ * function for the game (tools/boundary.py). */
+float root(float value)
+{
+    if (value <= 0) {
+        return 0;
+    }
+    float guess = value > 1 ? value / 2 : 1;
+    for (int step = 0; step < 8; step++) {
+        guess = 0.5F * (guess + (value / guess));
+    }
+    return guess;
+}
+
 /* The shapes drawn as effects: the explosions, flashes and puffs of smoke,
  * the jets of flame and the flames a blast leaves (No Remorse's). */
 bool isEffect(u16 shape)
@@ -212,7 +226,7 @@ void flash(float x, float y, float strength)
             for (int px = 0; px < BLOB; px++) {
                 const float dx = ((static_cast<float>(px) + 0.5F) / (BLOB / 2.0F)) - 1;
                 const float dy = ((static_cast<float>(py) + 0.5F) / (BLOB / 2.0F)) - 1;
-                const float k = std::clamp(1.0F - std::sqrt((dx * dx) + (dy * dy)), 0.0F, 1.0F);
+                const float k = std::clamp(1.0F - root((dx * dx) + (dy * dy)), 0.0F, 1.0F);
                 blob[(py * BLOB) + px] = colour | static_cast<std::uint32_t>(255.0F * k * k * strength);
             }
         }
@@ -519,7 +533,7 @@ void tickFire(Fire &fire, bool burning, float ox, float oy)
          * about the box's height as they cool; embers from its upper part;
          * smoke from its top. */
         const float cells = volumeCells();
-        const float size = std::clamp(std::sqrt(cells) * 1.6F, 2.4F, 6.0F);
+        const float size = std::clamp(root(cells) * 1.6F, 2.4F, 6.0F);
         const int flames = std::clamp(static_cast<int>(cells * 2.0F), 5, 24);
         const float tall = volumeNow.height;
         float x = 0;
@@ -678,8 +692,8 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
         /* Its body: the glow over the footprint and its lower part,
          * flickering, hottest low down. */
         const float cells = volumeCells();
-        const int across = std::clamp(static_cast<int>(std::sqrt(cells) * 2.5F), 3, 9);
-        const float radius = std::clamp(std::sqrt(cells) * 2.2F, 3.0F, 8.0F);
+        const int across = std::clamp(static_cast<int>(root(cells) * 2.5F), 3, 9);
+        const float radius = std::clamp(root(cells) * 2.2F, 3.0F, 8.0F);
         for (int i = 0; i < across; i++) {
             for (int j = 0; j < across; j++) {
                 for (int level = 0; level < 2; level++) {
