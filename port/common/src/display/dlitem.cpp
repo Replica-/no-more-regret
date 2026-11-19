@@ -2,6 +2,7 @@
 #include "dlitem.h"
 #include "blood.h"
 #include "shadows.h"
+#include "turns.h"
 #include "colours.h"
 #include "gamestate.h"
 #include "animprim.h"
@@ -114,7 +115,8 @@ void DL_ItemNode::draw()
     if (info->editor) {
         return;
     }
-    const u16 frame = nodeItem.frame();
+    /* The port's: the Silencer turned between his directions (turns.h). */
+    const u16 frame = turnFrame(nodeItem.id, nodeItem.frame());
     ShapeFrame *image = cachedShapeFrame(shape, frame);
     /* The port's: a fire the hardware scene draws instead (effects.h). */
     if (image != nullptr && !effectsReplaces(shape)) {
@@ -216,9 +218,11 @@ void DL_ItemNode::place()
     } else {
         halfBox(width, depth, height, &typeFlags.infos[itemShape[nodeItem.id]]);
     }
-    image = cachedShapeFrame(itemShape[nodeItem.id], nodeItem.frame());
+    /* The port's: the frame it is drawn in (turns.h). */
+    const u16 shown = turnFrame(nodeItem.id, nodeItem.frame());
+    image = cachedShapeFrame(itemShape[nodeItem.id], shown);
     if (image != nullptr) {
-        shapeCache->frameBounds(itemShape[nodeItem.id], nodeItem.frame(), &frame, 0, 0);
+        shapeCache->frameBounds(itemShape[nodeItem.id], shown, &frame, 0, 0);
         if ((itemFlags[nodeItem.id] & ITEM_FLIPPED) != 0) {
             left = screenX - frame.right;
             top = screenY + frame.top;

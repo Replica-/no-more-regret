@@ -9,6 +9,7 @@
 #include "shaphand.h"
 #include "imported.h"
 #include "upscaled.h"
+#include "turns.h"
 #include "cache.h"
 #include "cache_game.h"
 #include "clock.h"
@@ -52,6 +53,10 @@ ShapeFrame *cachedShapeFrame(u16 shape, u16 frame)
 {
     /* The port's frames of No Regret's in No Remorse (imported.h). */
     if (ShapeFrame *image = importedFrame(shape, frame)) {
+        return image;
+    }
+    /* The port's frames between the Silencer's directions (turns.h). */
+    if (ShapeFrame *image = turnsFrame(shape, frame)) {
         return image;
     }
     if (SHAPES_FROM_SWAP) {
@@ -513,6 +518,7 @@ void closeShapeFiles()
     frameCache = nullptr;
     releaseImported();
     releaseUpscaled();
+    releaseTurns();
 }
 
 /* Copies the shapes the game keeps from the swap file into a new shape file,

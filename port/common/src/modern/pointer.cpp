@@ -1,5 +1,6 @@
 /* The port's keyboard and mouse controls. See pointer.h. */
 #include "pointer.h"
+#include "turns.h"
 #include "animcach.h"
 #include "gamestate.h"
 #include "animprim.h"
@@ -701,6 +702,8 @@ void pointerTick()
         walkStop();
         return;
     }
+    /* Drawn again when the frame between his directions changes. */
+    turnsTick();
     /* The target the original chooses is not the player's: the aim is the
      * pointer's. */
     targeting = 0;
