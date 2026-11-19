@@ -9,6 +9,7 @@
 #include "gamepal.h"
 #include "gray.h"
 #include "gametime.h"
+#include "hittest.h"
 #include "host.h"
 #include "item.h"
 #include "itemcach.h"
@@ -419,6 +420,39 @@ int wideStatusDown()
         return 0;
     }
     return (height - SCREEN_HEIGHT) / 2;
+}
+
+bool wideSidesItemAt(u16 *item, i16 x, i16 y)
+{
+    *item = 0;
+    if ((x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) ||
+        (screenWideWidth() <= static_cast<u16>(SCREEN_WIDTH) && screenWideHeight() <= static_cast<u16>(SCREEN_HEIGHT))) {
+        return false;
+    }
+    const auto mapX = static_cast<i16>(x + scrollX);
+    const auto mapY = static_cast<i16>(y + scrollY);
+    const std::vector<Rect> areas{Rect(mapX, mapY, mapX, mapY)};
+    const Rect screen(scrollX, scrollY, static_cast<i16>(scrollX + SCREEN_WIDTH - 1),
+                      static_cast<i16>(scrollY + SCREEN_HEIGHT - 1));
+    const std::vector<SideItem> items = itemsIn(areas, screen);
+    const std::vector<std::size_t> order = drawingOrder(items);
+    /* The last drawn over the point is on top. */
+    for (auto k = order.size(); k > 0; k--) {
+        const SideItem &side = items[order[k - 1]];
+        if (!touching(side.bounds, areas[0]) || typeFlags.infos[itemShape[side.item]].ignore) {
+            continue;
+        }
+        ShapeFrame *frame = cachedShapeFrame(itemShape[side.item], side.frame);
+        if (frame == nullptr) {
+            continue;
+        }
+        const s32 atX = (itemFlags[side.item] & ITEM_FLIPPED) != 0 ? side.screenX - (mapX - side.screenX) : mapX;
+        if (frameHit(frame, side.screenX, side.screenY, atX, mapY)) {
+            *item = side.item;
+            return true;
+        }
+    }
+    return false;
 }
 
 void drawWideSides()

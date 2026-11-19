@@ -41,6 +41,8 @@
 #include "animprim.h"
 #include "dlist.h"
 #include "dlitem.h"
+#include "widesides.h"
+#include "screen.h"
 #include "random.h"
 #include "shapes.h"
 #include "effects.h"
@@ -1603,6 +1605,10 @@ u16 Item::avatarStoleSomething(u16 value)
 
 bool itemAt(u16 *item, i16 x, i16 y)
 {
+    /* The port's wide screen: a point off the screen, on its sides. */
+    if (x < 0 || x >= SCREEN_WIDTH || y < 0 || y >= SCREEN_HEIGHT) {
+        return wideSidesItemAt(item, x, y);
+    }
     const u16 node = nodeAt(x, y);
     DL_ItemNode *entry = static_cast<DL_ItemNode *>(nodeOf(node));
 

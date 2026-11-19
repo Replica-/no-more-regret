@@ -29,6 +29,11 @@ int wideStatusDown();
 /* The sides of the camera's frame, drawn and shown; nothing when the wide
  * screen is off. */
 void drawWideSides();
+/* The item drawn on top at the screen's point x,y (the screen's pixels: off
+ * the 640x480 screen, on the sides), by its frame's pixels, as the sides
+ * draw it; false for none or a point on the screen. Worked out from the
+ * game's items, not from what was drawn (itemAt's). */
+bool wideSidesItemAt(u16 *item, i16 x, i16 y);
 /* The sides covered (shown black) while a gump over the whole screen is
  * open on the frozen world (the game menu, the help, the settings,
  * loading, saving) or the screen is not the world's (a movie on black or
