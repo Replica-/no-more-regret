@@ -14,7 +14,7 @@
 struct InputEvent {
     /* In ticks of the interval timer's clock (pc.h's PIT_HZ). */
     std::uint64_t time;
-    enum Kind { SCAN, MOUSE, SCREEN, QUIT, LOAD, SAVE, USE, JUMP, MOVIE, DEVICE } kind;
+    enum Kind { SCAN, MOUSE, MOTION, SCREEN, QUIT, LOAD, SAVE, USE, JUMP, MOVIE, DEVICE } kind;
     u8 scan;
     /* The mouse's place in the driver's coordinates and its buttons; MOVIE's
      * place. */
@@ -38,6 +38,10 @@ void addInput(const InputEvent &event);
  *     <ticks> mouse <x> <y> [<buttons>]
  *                                    the driver's place; buttons bits 0-2
  *                                    left, right, middle
+ *     <ticks> motion <dx> <dy> [<buttons>]
+ *                                    the mouse moved by mickeys, as a
+ *                                    captured mouse moves it (mousedrv.h's
+ *                                    mouseMotion), and its buttons
  *     <ticks> pad <button> <1|0>     the gamepad's button down or up: a b
  *                                    x y back guide start ls rs lb rb up
  *                                    down left right misc paddle1-4

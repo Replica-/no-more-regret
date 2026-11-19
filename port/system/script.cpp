@@ -156,6 +156,12 @@ void readScript(const std::string &path)
                 mistake(path, number, "mouse x y [buttons]");
             }
             line >> event.buttons;
+        } else if (verb == "motion") {
+            event.kind = InputEvent::MOTION;
+            if (!(line >> std::dec >> event.x >> event.y)) {
+                mistake(path, number, "motion dx dy [buttons]");
+            }
+            line >> event.buttons;
         } else if (verb == "screen") {
             event.kind = InputEvent::SCREEN;
             if (!(line >> event.path)) {
@@ -249,6 +255,9 @@ void takeInput(std::uint64_t time)
             break;
         case InputEvent::MOUSE:
             mouseInput(event.x, event.y, event.buttons);
+            break;
+        case InputEvent::MOTION:
+            mouseMotion(event.x, event.y, event.buttons);
             break;
         case InputEvent::DEVICE:
             keyboardDevice(event.device);
