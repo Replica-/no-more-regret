@@ -53,23 +53,35 @@ float root(float value)
  * the jets of flame and the flames a blast leaves (No Remorse's). */
 bool isEffect(u16 shape)
 {
-    return (shape >= 0x31c && shape <= 0x327) || shape == 0x438 || shape == 0x439 || shape == 0x43b ||
-           shape == 0x43c || shape == 0x50a || shape == LEFT_FIRE;
+    return (shape >= 0x31c && shape <= 0x327) || (shape >= 0x438 && shape <= 0x43c) || shape == 0x4cb ||
+           shape == 0x50a || shape == 0x518 || shape == LEFT_FIRE;
 }
 
 /* The fires: the jets of flame and the flames a blast leaves. */
 bool isFire(u16 shape)
 {
-    return shape == 0x438 || shape == 0x439 || shape == 0x43b || shape == 0x43c || shape == 0x50a || shape == LEFT_FIRE;
+    return (shape >= 0x438 && shape <= 0x43c) || shape == 0x4cb || shape == 0x50a || shape == 0x518 ||
+           shape == LEFT_FIRE;
 }
 
-/* The jets of flame out of a pipe: their box lies long along the floor,
- * the pipe at its far end (its least x or y), the flame shooting along it
- * to the item's own corner, as their art's does. */
+/* The jets of flame out of a pipe (FLAMEBOX's): their box lies long along
+ * the floor, the pipe at its far end (its least x or y), the flame shooting
+ * along it to the item's own corner, as their art's does. Each burns as
+ * one shape while it is on (43Bh along y, 50Ah along x), and opens (43Ah,
+ * 518h) and shuts (43Ch, 4CBh) as others at the same point: frames of the
+ * flame longer, or shorter, out of the same pipe. */
 bool isJet(u16 shape)
 {
-    return shape == 0x43b || shape == 0x50a;
+    return shape == 0x43a || shape == 0x43b || shape == 0x43c || shape == 0x4cb || shape == 0x50a || shape == 0x518;
 }
+/* The burning shape a jet's opening or shutting is of: its box. */
+u16 jetBody(u16 shape)
+{
+    return (shape == 0x43a || shape == 0x43b || shape == 0x43c) ? 0x43b : 0x50a;
+}
+/* The width of the burning jet's frames: a frame of the opening or the
+ * shutting reaches as far along as its width is of it. */
+const float JET_WIDTH = 124;
 /* How high up its box a jet comes out of the pipe (0-1). */
 const float JET_HEIGHT = 0.25F;
 
@@ -383,6 +395,8 @@ struct Volume {
     float right;
     float bottom;
     bool jet;
+    /* How far along its box the jet reaches, 0-1 (its frame's). */
+    float reach;
 };
 Volume volumeNow;
 
@@ -400,7 +414,7 @@ void volumePoint(float u, float v, float w, float *x, float *y)
  * step), at least a flame's. */
 void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ)
 {
-    const ShapeInfo &info = typeFlags.infos[shape];
+    const ShapeInfo &info = typeFlags.infos[isJet(shape) ? jetBody(shape) : shape];
     float across = static_cast<float>(std::max<int>(1, info.x)) * 16;
     float deep = static_cast<float>(std::max<int>(1, info.y)) * 16;
     if (flipped) {
@@ -414,6 +428,7 @@ void volumeOf(u16 shape, bool flipped, u16 mapX, u16 mapY, i16 mapZ)
     box.z0 = mapZ;
     box.height = std::max(24.0F, static_cast<float>(info.z) * 8);
     box.jet = isJet(shape);
+    box.reach = 1;
     box.left = 1e9F;
     box.top = 1e9F;
     box.right = -1e9F;
@@ -469,11 +484,12 @@ void tickFire(Fire &fire, bool burning, float ox, float oy)
         float endY = 0;
         /* From just inside the pipe's mouth. */
         jetPoint(-0.05F, JET_HEIGHT, &startX, &startY);
-        jetPoint(1, JET_HEIGHT, &endX, &endY);
+        jetPoint(volumeNow.reach, JET_HEIGHT, &endX, &endY);
         const float dx = endX - startX;
         const float dy = endY - startY;
         const float length = std::max(1.0F, root((dx * dx) + (dy * dy)));
-        for (int n = 0; n < 16; n++) {
+        const int tongues = static_cast<int>(8 + (16 * volumeNow.reach));
+        for (int n = 0; n < tongues; n++) {
             const float life = between(14, 20);
             const float speed = between(1.45F, 1.75F) / life;
             const float spread = between(-0.012F, 0.012F);
@@ -487,12 +503,12 @@ void tickFire(Fire &fire, bool burning, float ox, float oy)
         float x = 0;
         float y = 0;
         if (random01() < 0.25F) {
-            jetPoint(between(0.5F, 1.0F), JET_HEIGHT, &x, &y);
+            jetPoint(between(0.5F, 1.0F) * volumeNow.reach, JET_HEIGHT, &x, &y);
             addParticle(fire, {x - ox, y - oy, (dx / length) * between(0.3F, 0.8F), -between(0.6F, 1.4F), 0,
                                between(30, 60), between(0.55F, 0.9F), 1, Kind::EMBER});
         }
-        if (random01() < 0.35F) {
-            jetPoint(between(0.8F, 1.0F), JET_HEIGHT + 0.2F, &x, &y);
+        if (random01() < 0.35F * volumeNow.reach) {
+            jetPoint(between(0.8F, 1.0F) * volumeNow.reach, JET_HEIGHT + 0.2F, &x, &y);
             addParticle(fire, {x - ox, y - oy, between(-0.1F, 0.1F), -between(0.25F, 0.45F), 0, between(70, 110),
                                between(4.0F, 6.0F), 0, Kind::SMOKE});
         }
@@ -654,10 +670,10 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
             const float along = (static_cast<float>(i) + 0.5F) / 10;
             float x = 0;
             float y = 0;
-            jetPoint(along * 0.8F, JET_HEIGHT, &x, &y);
+            jetPoint(along * 0.8F * volumeNow.reach, JET_HEIGHT, &x, &y);
             const float flicker = noise(along * 6, t * 7.0F);
             fireColour((1.0F - (0.5F * along)) * (0.7F + (0.4F * flicker)), &red, &green, &blue);
-            splat(at, x, y, 2.5F + (5.0F * along), red * 0.5F, green * 0.5F, blue * 0.5F, 0, false, 1.2F);
+            splat(at, x, y, 3.5F + (5.0F * along), red * 0.6F, green * 0.6F, blue * 0.6F, 0, false, 1.2F);
         }
     } else if (burning) {
         /* Its body: the glow over the footprint and its lower part,
@@ -702,7 +718,7 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
             const float cooled = p.heat * (0.3F + (0.7F * left));
             fireColour(cooled, &red, &green, &blue);
             const float fade = 0.3F + (0.7F * left);
-            splat(at, x, y, p.size * (0.45F + (1.8F * (1.0F - left))), red * 0.45F * fade, green * 0.45F * fade,
+            splat(at, x, y, p.size * (0.8F + (1.5F * (1.0F - left))), red * 0.45F * fade, green * 0.45F * fade,
                   blue * 0.45F * fade, 0, false, 1.2F);
             break;
         }
@@ -728,6 +744,21 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
     const float h = static_cast<float>(at.height) / CANVAS_SCALE;
     overlayPictureAs(canvas, at.width, at.height, at.left, at.top, w, h, OverlayBlend::BLEND, false);
     const auto channel = [](float value) { return static_cast<std::uint32_t>(std::clamp(value, 0.0F, 255.0F)); };
+    if (burning && volumeNow.jet) {
+        /* A jet is solid where it burns, as its art is: its colours over
+         * what is behind it, a little of its light added on over them. */
+        for (int i = 0; i < area; i++) {
+            const float most = std::max({lightRed[i], lightGreen[i], lightBlue[i]});
+            const float solid = std::clamp((most - 40.0F) / 120.0F, 0.0F, 0.92F);
+            const float scale = most > 0 ? std::min(1.0F, 255.0F / most) : 0;
+            canvas[i] = (channel(lightRed[i] * scale) << 24) | (channel(lightGreen[i] * scale) << 16) |
+                        (channel(lightBlue[i] * scale * 0.8F) << 8) | channel(solid * 255);
+            lightRed[i] *= 0.4F;
+            lightGreen[i] *= 0.4F;
+            lightBlue[i] *= 0.4F;
+        }
+        overlayPictureAs(canvas, at.width, at.height, at.left, at.top, w, h, OverlayBlend::BLEND, false);
+    }
     for (int i = 0; i < area; i++) {
         canvas[i] = (channel(lightRed[i]) << 24) | (channel(lightGreen[i]) << 16) | (channel(lightBlue[i]) << 8) | 0xffU;
     }
@@ -736,8 +767,18 @@ void drawFire(const Fire &fire, bool burning, float ox, float oy)
 
 /* A fire's ticks and pictures: key's, at the map's point, as large as
  * shape's box (volumeOf); with a glow round it, flickering. */
-void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored)
+void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored, u16 frame = 0)
 {
+    /* A jet's opening, burning and shutting are items one after the other
+     * at its point: one fire, what it gave off going on. */
+    if (isJet(shape)) {
+        for (Fire &other : fires) {
+            if (other.used && other.key != key && other.mapX == mapX && other.mapY == mapY && other.mapZ == mapZ) {
+                other.key = key;
+                break;
+            }
+        }
+    }
     Fire *fire = fireOf(key);
     if (fire == nullptr) {
         return;
@@ -750,6 +791,10 @@ void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored)
     float y;
     mapToOverlay(mapX, mapY, mapZ, &x, &y);
     volumeOf(shape, mirrored, mapX, mapY, mapZ);
+    if (isJet(shape) && shape != jetBody(shape)) {
+        const ShapeFrame *image = cachedShapeFrame(shape, frame);
+        volumeNow.reach = image != nullptr ? std::clamp(static_cast<float>(image->width) / JET_WIDTH, 0.15F, 1.0F) : 1;
+    }
     const u32 time = now();
     for (u32 steps = std::min<u32>(time - fire->tick, 6); steps > 0; steps--) {
         tickFire(*fire, true, x, y);
@@ -928,7 +973,7 @@ void drawEffects()
                 }
                 if (isFire(itemShape[item])) {
                     burn(item, itemX[item], itemY[item], itemZ[item], itemShape[item],
-                         (itemFlags[item] & ITEM_FLIPPED) != 0);
+                         (itemFlags[item] & ITEM_FLIPPED) != 0, Item(item).frame());
                     continue;
                 }
                 float x;

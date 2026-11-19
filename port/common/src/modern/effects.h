@@ -1,7 +1,8 @@
 /* The hardware scene's fires, explosions and muzzle flashes (No Remorse's,
  * with the hardware scene: enhancements.h). The explosions, flashes and
  * puffs of smoke (sprites of shapes 31Ch-327h), the jets of flame (items
- * 438h, 439h, 43Bh, 43Ch, 50Ah) and the flames a blast leaves (44Ah) are
+ * 438h-43Ch, 4CBh, 50Ah, 518h: opening, burning, shutting) and the flames a
+ * blast leaves (44Ah) are
  * drawn again over the game's picture, smooth, over a glow of their own
  * shape added round them, flickering a little, the lighting's shade not on
  * them; the flames a blast leaves burn on six seconds after the game takes
@@ -18,7 +19,8 @@ class Viewport;
  * editor's marks of their places (PLACE ME) none at all. The fire is the
  * scene's own, as large as the item's box, its footprint and height: a
  * glowing body and the tongues of flame, embers and smoke it gives off,
- * over what stands in front of it. */
+ * over what stands in front of it. A jet's is solid, shot out of its pipe
+ * along its box, as long as its frame's (opening and shutting). */
 [[nodiscard]] bool effectsReplaces(u16 shape);
 /* Draws them over the world (hud.cpp, after the lighting). */
 void drawEffects();
