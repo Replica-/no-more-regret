@@ -22,8 +22,8 @@ class Viewport;
 [[nodiscard]] bool effectsReplaces(u16 shape);
 /* Draws them over the world (hud.cpp, after the lighting). */
 void drawEffects();
-/* The NPC died (loot.h): its gun is flung out of its hand, turning over,
- * bounces where it fell and lies a while, for show (no item). */
+/* The NPC died (loot.h): its gun drops from its hand to the floor beside
+ * it and lies there while the map is played, for show (no item). */
 void effectsDropGun(u16 npc);
 /* A shot left the gun at map point x,y,z (fireWeapon). */
 void effectsShot(u16 x, u16 y, u8 z);
