@@ -1172,6 +1172,16 @@ void resetBindings()
     setKeyPreset(preset);
 }
 
+namespace {
+
+/* The inputs of the action's preset (setKeyPreset's). */
+const InputList &presetInputs(std::size_t index)
+{
+    return preset == KeyPreset::MODERN && modernized[index] ? moderns[index] : originals[index];
+}
+
+}
+
 std::string bindingsText()
 {
     std::string text = std::string("keys=") + keyPresetName(keyPreset()) + "\r\n";
@@ -1264,15 +1274,61 @@ std::vector<std::string> readBindingsText(const std::string &text)
              * weapon (pointer.h): a binding to it kept from before is
              * dropped. */
             std::string inputs = value;
+            const Action action = actionNamed(key.c_str() + 5);
+            if (lowered(value) == "default") {
+                /* The shared settings' (sharedBindingsText): the preset's. */
+                load();
+                if (!present[indexOf(action)]) {
+                    unread.push_back(line);
+                    continue;
+                }
+                bound[indexOf(action)] = presetInputs(indexOf(action));
+                publishHostKeys();
+                continue;
+            }
             if (keyPreset() == KeyPreset::MODERN) {
                 inputs = withoutRightButton(value);
             }
-            if (!bindAction(actionNamed(key.c_str() + 5), inputs.c_str())) {
+            if (!bindAction(action, inputs.c_str())) {
                 unread.push_back(line);
             }
         }
     }
     return unread;
+}
+
+std::string sharedBindingsText(const std::string &shared)
+{
+    load();
+    std::string text = std::string("keys=") + keyPresetName(keyPreset()) + "\r\n";
+    text += std::string("mouse_roll=") + (mouseRolls ? "1" : "0") + "\r\n";
+    for (std::size_t entry = 0; entry < GAME_ACTION_DEFAULT_COUNT; entry++) {
+        const Action action = GAME_ACTION_DEFAULTS[entry].action;
+        std::string own;
+        for (const Input &input : presetInputs(indexOf(action))) {
+            own += (own.empty() ? "" : " ") + inputText(input);
+        }
+        const std::string inputs = boundText(action);
+        text += std::string("bind_") + actionName(action) + "=" + (inputs == own ? "default" : inputs) + "\r\n";
+    }
+    std::size_t start = 0;
+    while (start < shared.size()) {
+        std::size_t end = shared.find('\n', start);
+        if (end == std::string::npos) {
+            end = shared.size();
+        }
+        const std::string line = trimmed(shared.substr(start, end - start));
+        start = end + 1;
+        const std::size_t equals = line.find('=');
+        if (!line.starts_with("bind_") || equals == std::string::npos) {
+            continue;
+        }
+        const Action action = actionNamed(lowered(trimmed(line.substr(5, equals - 5))).c_str());
+        if (action != Action::NONE && !present[indexOf(action)]) {
+            text += line + "\r\n";
+        }
+    }
+    return text;
 }
 
 bool controlKey(const KeyEvent &pressed, ControlKey *result)

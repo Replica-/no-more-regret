@@ -221,6 +221,65 @@ const char *hostEnvironment(const char *name)
     return std::getenv(name);
 }
 
+namespace {
+
+/* The shared settings' file (host.h), empty for none. */
+fs::path sharedSettingsPath()
+{
+    if (const char *named = std::getenv("REGRET_SHARED_SETTINGS"); named != nullptr && *named != 0) {
+        return fs::path(named);
+    }
+    if (recording() || replaying() || std::getenv("REGRET_SCRIPT") != nullptr ||
+        std::getenv("REGRET_ORIGINAL_CONTROLS") != nullptr || std::getenv("PORT_RELEASE_CHECK") != nullptr) {
+        return {};
+    }
+    fs::path folder;
+#ifdef _WIN32
+    if (const char *appData = std::getenv("APPDATA"); appData != nullptr && *appData != 0) {
+        folder = appData;
+    }
+#else
+    if (const char *config = std::getenv("XDG_CONFIG_HOME"); config != nullptr && *config != 0) {
+        folder = config;
+    } else if (const char *home = std::getenv("HOME"); home != nullptr && *home != 0) {
+        folder = fs::path(home) / ".config";
+    }
+#endif
+    if (folder.empty()) {
+        return {};
+    }
+    return folder / PORT_NAME / "shared.cfg";
+}
+
+}
+
+void hostSharedSettings(std::string *text)
+{
+    const SystemSide systemSide;
+    text->clear();
+    const fs::path path = sharedSettingsPath();
+    if (path.empty()) {
+        return;
+    }
+    std::ifstream file(path, std::ios::binary);
+    if (file) {
+        text->assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+}
+
+void hostWriteSharedSettings(const std::string &text)
+{
+    const SystemSide systemSide;
+    const fs::path path = sharedSettingsPath();
+    if (path.empty()) {
+        return;
+    }
+    std::error_code error;
+    fs::create_directories(path.parent_path(), error);
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << text;
+}
+
 bool portVersionAsked(int argc, char **argv)
 {
     for (int k = 1; k < argc; k++) {

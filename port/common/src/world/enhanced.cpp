@@ -12,6 +12,7 @@
 #include "colours.h"
 #include "enhancements.h"
 #include "hud.h"
+#include "options.h"
 #include "profile.h"
 #include "screen.h"
 #include "utility.h"
@@ -49,6 +50,120 @@ std::string lowered(std::string text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return text;
+}
+
+/* crusader.cfg's settings the shared settings hold, in the order they are
+ * read: frameskip before limitblasts, as No Remorse's frameskip spills into
+ * limitBlasts (options.cpp). */
+const char *const SHARED_OPTIONS[] = {"music",     "musicvolume", "soundvolume", "mousespeed", "animation",
+                                      "frameskip", "limitblasts", "subtitles",   "violence"};
+
+/* The text's lines, without the spaces and returns at their ends. */
+std::vector<std::string> linesOf(const std::string &text)
+{
+    std::vector<std::string> lines;
+    std::size_t start = 0;
+    while (start < text.size()) {
+        std::size_t end = text.find('\n', start);
+        if (end == std::string::npos) {
+            end = text.size();
+        }
+        lines.push_back(trimmed(text.substr(start, end - start)));
+        start = end + 1;
+    }
+    return lines;
+}
+
+/* The line's key in lower case, empty for none (a comment). */
+std::string keyOf(const std::string &line)
+{
+    const std::size_t equals = line.find('=');
+    if (line.empty() || line[0] == '#' || line[0] == '/' || equals == std::string::npos) {
+        return "";
+    }
+    return lowered(trimmed(line.substr(0, equals)));
+}
+
+bool sharedOption(const std::string &key)
+{
+    for (const char *option : SHARED_OPTIONS) {
+        if (key == option) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The game folder's file's text, empty without it. */
+std::string fileText(const char *name)
+{
+    std::string text;
+    if (fileExists(name) == 0) {
+        return text;
+    }
+    std::FILE *file = fileStream(name, "rb");
+    if (file == nullptr) {
+        return text;
+    }
+    char buffer[512];
+    std::size_t count = 0;
+    while ((count = fileStreamRead(file, buffer, 1, sizeof buffer)) > 0) {
+        text.append(buffer, count);
+    }
+    fileStreamClose(file);
+    return text;
+}
+
+/* The shared settings' text (host.h's hostSharedSettings): crusader.cfg's
+ * SHARED_OPTIONS as the game wrote them, the port's settings but the game
+ * and the debug features (the full screen and the sound's depth always),
+ * and the bindings' (sharedBindingsText) over those shared has. */
+std::string sharedText(const std::string &shared)
+{
+    std::string text = "# The settings both games share, which each game reads over its own crusader.cfg and "
+                       "enhanced.cfg and writes when it writes them; bind_<name>=default is each game's own.\r\n";
+    const std::vector<std::string> options = linesOf(fileText("crusader.cfg"));
+    for (const char *option : SHARED_OPTIONS) {
+        for (const std::string &line : options) {
+            if (keyOf(line) == option) {
+                text += line + "\r\n";
+                break;
+            }
+        }
+    }
+    for (const std::string &line : linesOf(enhancedText())) {
+        const std::string key = keyOf(line);
+        if (key.empty() || key == "game" || key == "debug_feature" || key == "fullscreen" || key == "sound_bits" ||
+            key == "keys" || key == "mouse_roll" || key.starts_with("bind_")) {
+            continue;
+        }
+        text += line + "\r\n";
+    }
+    text += std::string("fullscreen=") + (hostFullscreen() ? "1" : "0") + "\r\n";
+    text += "sound_bits=" + std::to_string(chosenSoundBits) + "\r\n";
+    return text + sharedBindingsText(shared);
+}
+
+/* The shared settings read over the game's: crusader.cfg's (readOptionText)
+ * and the port's (readEnhancedText); keys= only when it is another preset,
+ * which puts every action back to its own. */
+void readShared(const std::string &shared)
+{
+    std::string options;
+    std::string port;
+    for (const std::string &line : linesOf(shared)) {
+        const std::string key = keyOf(line);
+        if (key.empty() || key == "game" || key == "debug_feature") {
+            continue;
+        }
+        if (sharedOption(key)) {
+            options += line + "\n";
+        } else if (key != "keys" || lowered(trimmed(line.substr(line.find('=') + 1))) != keyPresetName(keyPreset())) {
+            port += line + "\n";
+        }
+    }
+    readOptionText(options.c_str(), nullptr);
+    std::ignore = readEnhancedText(port);
 }
 
 }
@@ -200,22 +315,17 @@ void readEnhancedOptions()
     screenSetWide(original ? 0 : 1);
     /* The window's own changes of the full screen (its key) kept. */
     hostFullscreenAction(writeEnhancedOptions);
-    if (fileExists(ENHANCED_FILE) == 0) {
-        return;
-    }
-    std::FILE *file = fileStream(ENHANCED_FILE, "rb");
-    if (file == nullptr) {
-        return;
-    }
-    std::string text;
-    char buffer[512];
-    std::size_t count = 0;
-    while ((count = fileStreamRead(file, buffer, 1, sizeof buffer)) > 0) {
-        text.append(buffer, count);
-    }
-    fileStreamClose(file);
-    for (const std::string &line : readEnhancedText(text)) {
+    for (const std::string &line : readEnhancedText(fileText(ENHANCED_FILE))) {
         debugPrintf(0xff, "Ignoring %s of %s: a setting it does not know\r\n", line.c_str(), ENHANCED_FILE);
+    }
+    /* The settings both games share over the game's own; the first game
+     * to run makes them from its own. */
+    std::string shared;
+    hostSharedSettings(&shared);
+    if (shared.empty()) {
+        hostWriteSharedSettings(sharedText(shared));
+    } else {
+        readShared(shared);
     }
 }
 
@@ -229,4 +339,8 @@ void writeEnhancedOptions()
     const std::string text = enhancedText();
     std::ignore = fileStreamWrite(file, text.data(), 1, text.size());
     fileStreamClose(file);
+    /* And the settings both games share (sharedText). */
+    std::string shared;
+    hostSharedSettings(&shared);
+    hostWriteSharedSettings(sharedText(shared));
 }

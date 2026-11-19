@@ -6,6 +6,7 @@
 #ifndef PORT_PLATFORM_HOST_H
 #define PORT_PLATFORM_HOST_H
 #include <cstdint>
+#include <string>
 
 /* The text screen (Borland's conio: CRUSYS.C's title, the halts'
  * messages): on the standard output, a row at a time, without colours.
@@ -76,6 +77,16 @@ void hostFullscreenAction(void (*changed)());
  * screen drawn anew (the camera's repaint), as the game draws again only
  * what changes. Between two of its steps. */
 void hostRepaintAction(void (*repaint)());
+/* The settings both games share (enhanced.cpp's sharedText): the player's
+ * own file of them, in the host's folder of the user's settings (Windows'
+ * %APPDATA%, else $XDG_CONFIG_HOME or ~/.config, then "No More
+ * Regret/shared.cfg"), or the file REGRET_SHARED_SETTINGS names. Its text
+ * read (empty without it); written, its folder made. Without
+ * REGRET_SHARED_SETTINGS none in a recording or a replay, nor in a scripted
+ * or a test's run (REGRET_SCRIPT, REGRET_ORIGINAL_CONTROLS,
+ * PORT_RELEASE_CHECK), which keep to the game folder's files. */
+void hostSharedSettings(std::string *text);
+void hostWriteSharedSettings(const std::string &text);
 /* INT 3: a stop in a debugger when one runs the game; nothing without. */
 void hostDebugBreak();
 

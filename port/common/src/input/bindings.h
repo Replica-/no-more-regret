@@ -292,6 +292,13 @@ void loadBindings();
  * comments (# or /) and other keys are passed over. Returns the lines of either kind
  * the game cannot read, which it leaves. */
 [[nodiscard]] std::vector<std::string> readBindingsText(const std::string &text);
+/* The bindings' lines of the settings both games share (enhanced.h): keys=,
+ * mouse_roll=, and each action the game has, bind_<name>=default when it
+ * has its preset's inputs (each game's own then), else its inputs; the
+ * lines of the actions only the other game has kept from shared, the
+ * shared text before. readBindingsText reads them: bind_<name>=default
+ * gives the action its preset's inputs. */
+[[nodiscard]] std::string sharedBindingsText(const std::string &shared);
 
 /* A key the player pressed, for the controller: the key of the action it is
  * bound to (action), or the key as it is (Action::NONE); false when it is
