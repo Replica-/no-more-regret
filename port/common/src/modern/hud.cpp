@@ -319,7 +319,9 @@ std::uint32_t picture[PIXELS];
 void drawMenuPointer()
 {
     if (mouseCtl != nullptr) {
-        arrowCursor(static_cast<float>(mouseCtl->pointerX), static_cast<float>(mouseCtl->pointerY), 0);
+        /* On the screen, as the gumps' events have it: over the world the
+         * pointer's place is the wide frame's (pointer.h's reach). */
+        arrowCursor(static_cast<float>(pointerScreenX()), static_cast<float>(pointerScreenY()), 0);
     }
 }
 
