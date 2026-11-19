@@ -1,6 +1,7 @@
 /* DLITEM.C (Code55): the items in the display list. See dlitem.h. */
 #include "dlitem.h"
 #include "blood.h"
+#include "shadows.h"
 #include "colours.h"
 #include "gamestate.h"
 #include "animprim.h"
@@ -118,6 +119,12 @@ void DL_ItemNode::draw()
     /* The port's: a fire the hardware scene draws instead (effects.h). */
     if (image != nullptr && !effectsReplaces(shape)) {
         const u16 nodeFlags = itemFlags[nodeItem.id];
+        /* The port's: a character's shadow on the floor, under it
+         * (shadows.h). */
+        if (nodeItem.isNpc()) {
+            paintShadow(nodeItem.id, image, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY),
+                        (nodeFlags & ITEM_FLIPPED) != 0, drawView);
+        }
         if ((nodeFlags & ITEM_FLIPPED) != 0) {
             if ((nodeFlags & ITEM_INVISIBLE) != 0) {
                 drawView.drawShapeMirroredTranslucent(screenX - scrollX, screenY - scrollY, image,
@@ -260,6 +267,8 @@ void DL_ItemNode::place()
                 }
             }
         }
+        /* The port's: a character's shadow (shadows.h). */
+        shadowBounds(nodeItem.id, top, right, bottom);
     } else {
         left = 0;
         top = 0;
