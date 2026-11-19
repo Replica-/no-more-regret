@@ -681,6 +681,13 @@ void pointerTick()
             holster(npc, false);
         }
     }
+    /* The weapon drawn already, standing as at peace (a script's: No
+     * Regret's teleport in leaves him so, the gun in his hand): the combat
+     * stand at once, the weapon out. */
+    if (npc.isWeaponDrawn() != 0U && npc.isKneeling() == 0U && !npc.isBusy() &&
+        (npc.lastAnimSet() == ANIM_TELEPORT_IN || npc.lastAnimSet() == ANIM_STAND)) {
+        npc.doAnim(readyAnim(npc), DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
+    }
     if (buttons.pendingDraw != 0U && !npc.isBusy()) {
         buttons.pendingDraw = 0;
         if (!weaponOut(npc)) {
