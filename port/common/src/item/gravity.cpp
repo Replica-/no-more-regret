@@ -162,10 +162,12 @@ void GravityProcess::onKill()
                 const u16 lastAnim = npc.lastAnimSet();
                 if (npc.isSilencer() && (npc.isDead() == 0U) && lastAnim != ANIM_QUICK_JUMP &&
                     lastAnim != ANIM_COMBAT_ROLL_LEFT && lastAnim != ANIM_COMBAT_ROLL_RIGHT &&
-                    lastAnim != ANIM_KNEEL_ROLL_LEFT && lastAnim != ANIM_KNEEL_ROLL_RIGHT && !npc.isRunning() &&
-                    fallen >= 3) {
+                    lastAnim != ANIM_KNEEL_ROLL_LEFT && lastAnim != ANIM_KNEEL_ROLL_RIGHT &&
+                    lastAnim != ANIM_ROLL_FORWARD && !npc.isRunning() && fallen >= 3) {
                     npc.doAnim(ANIM_JUMP_LANDING, DIRECTION_CURRENT, EVEN_IF_BUSY, 1);
-                    if (npc.isInCombat() != 0U) {
+                    /* The port's: nor the forward roll (as the rolls aside),
+                     * and with the weapon drawn he lands in combat. */
+                    if (npc.isInCombat() != 0U || npc.isWeaponDrawn() != 0U) {
                         npc.doAnim(ANIM_COMBAT_STAND_SMALL, DIRECTION_CURRENT, 1, 0);
                     } else {
                         npc.doAnim(ANIM_STAND, DIRECTION_CURRENT, 1, 0);

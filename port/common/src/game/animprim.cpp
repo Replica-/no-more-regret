@@ -89,9 +89,11 @@ bool AnimPrimitive::canStep(ItemPoint from, ItemPoint to, u16 /*unused*/)
             fall(&npc);
         } else {
             lastAnim = npc.lastAnimSet();
+            /* The port's: nor the forward roll (No Remorse's, from No
+             * Regret), which keeps going as No Regret's does. */
             if (lastAnim != ANIM_JUMP_LANDING && lastAnim != ANIM_QUICK_JUMP && lastAnim != ANIM_COMBAT_ROLL_LEFT &&
                 lastAnim != ANIM_COMBAT_ROLL_RIGHT && lastAnim != ANIM_KNEEL_ROLL_LEFT &&
-                lastAnim != ANIM_KNEEL_ROLL_RIGHT) {
+                lastAnim != ANIM_KNEEL_ROLL_RIGHT && lastAnim != ANIM_ROLL_FORWARD) {
                 npc.doAnim(ANIM_JUMP_LANDING, DIRECTION_CURRENT, EVEN_IF_BUSY, 1);
             }
             hurl(&npc, to.x - from.x, to.y - from.y, to.z - from.z, 2);
