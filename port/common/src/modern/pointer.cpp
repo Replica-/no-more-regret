@@ -30,6 +30,7 @@
 #include "jump.h"
 #include "systimer.h"
 #include "type.h"
+#include "itemdam.h"
 #include "world.h"
 
 #include <algorithm>
@@ -786,6 +787,32 @@ void pointerTick()
     }
 }
 
+namespace {
+
+/* How far past the point aimed at a shot's line is followed for what it
+ * would hit (map units). */
+const s32 PAST_AIM = 192;
+
+/* What a shot hurts: an NPC alive (not the one the player controls), a
+ * breakable thing, or an item that takes damage (damage.flx). */
+bool hurtByShot(u16 item)
+{
+    if (item == 0U || item == controlledActor) {
+        return false;
+    }
+    Item it(item);
+    if (!it.isValid()) {
+        return false;
+    }
+    if (it.isNpc()) {
+        Npc npc(item);
+        return npc.isDead() == 0U;
+    }
+    return it.family() == FAMILY_BREAKABLE || (damageTable != nullptr && damageTable->takesDamage(it.shape()) != 0U);
+}
+
+}
+
 u16 pointerShotTarget()
 {
     if (!pointerMode()) {
@@ -834,6 +861,25 @@ bool pointerAim(PointerAim *aim)
                                  std::abs(static_cast<i16>(sweep.end.y - aim->to.y)), std::abs(sweep.end.z - aim->to.z)});
     aim->blocked = !clear && sweep.hitItem != 0U && sweep.hitItem != target && sweep.hitItem != under && shortBy > 16;
     aim->stop = aim->blocked ? sweep.end : aim->to;
+    /* A shot flies on past the point: what it meets first on the way, or
+     * past it up to PAST_AIM further, is what it would hit. */
+    aim->hits = target != 0U && clear;
+    if (!clear) {
+        aim->hits = sweep.hitItem == target ? target != 0U : hurtByShot(sweep.hitItem);
+    } else if (!aim->hits) {
+        const s32 dx = static_cast<s32>(aim->to.x) - static_cast<s32>(aim->from.x);
+        const s32 dy = static_cast<s32>(aim->to.y) - static_cast<s32>(aim->from.y);
+        const s32 dz = static_cast<s32>(aim->to.z) - static_cast<s32>(aim->from.z);
+        const s32 length = std::max({std::abs(dx), std::abs(dy), std::abs(dz), static_cast<s32>(1)});
+        ItemPoint from = aim->to;
+        ItemPoint past(static_cast<u16>(aim->to.x + (dx * PAST_AIM / length)),
+                       static_cast<u16>(aim->to.y + (dy * PAST_AIM / length)),
+                       static_cast<u8>(std::clamp<s32>(aim->to.z + (dz * PAST_AIM / length), 0, 0xfa)));
+        Sweep on;
+        if (!on.test(SHAPE_SHOT, from, past, MOVE_NO_FLOOR, npc.id, 0)) {
+            aim->hits = hurtByShot(on.hitItem);
+        }
+    }
     /* SuperSprite::launch's spread around the point aimed at: a tenth of
      * the distance to it, less for some weapons, at most 80 across and 24
      * up. */

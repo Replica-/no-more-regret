@@ -73,6 +73,10 @@ struct PointerAim {
     ItemPoint to;
     ItemPoint stop;
     bool blocked;
+    /* The shot's line meets what a shot hurts: the target under the
+     * pointer (pointerShotTarget), or what is in the way, an NPC alive or
+     * an item a shot breaks or damages. */
+    bool hits;
     i16 spread;
     i16 rise;
 };

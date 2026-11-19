@@ -50,6 +50,8 @@ const u32 BAR_SHOWN = 135;
 const u32 BAR_FADE = 30;
 
 const std::uint32_t TARGET_RED = 0xff2828ff;
+/* The reticle when the shot would hit (PointerAim::hits). */
+const std::uint32_t TARGET_GREEN = 0x30f050ff;
 const std::uint32_t RIM = 0x000000aa;
 const std::uint32_t OUTLINE = 0x000000d7;
 const std::uint32_t ARROW_FILL = 0xfafafaff;
@@ -68,8 +70,9 @@ void reachBadge(float x, float y, float radius, bool inReach)
 /* The target cursor with the weapon out: a thin red ring, a dot and four
  * short lines out from the ring, over a dark rim; the reach's dot at its
  * lower right over an item (badge 0 none, 1 in reach, 2 not). */
-void targetCursor(float x, float y, int badge)
+void targetCursor(float x, float y, int badge, bool hits)
 {
+    const std::uint32_t colour = hits ? TARGET_GREEN : TARGET_RED;
     float size = 30;
     if (ShapeFrame *frame = cachedShapeFrame(RETICLE_SHAPE, 0)) {
         size = static_cast<float>(std::max(frame->width, frame->height)) * 2.2F;
@@ -79,17 +82,17 @@ void targetCursor(float x, float y, int badge)
     const float thick = std::max(0.8F, outer * 0.04F);
     const float tick = std::max(1.0F, outer * 0.055F);
     overlayRing(x, y, ring, (2 * thick) + 1.4F, RIM);
-    overlayRing(x, y, ring, 2 * thick, TARGET_RED);
+    overlayRing(x, y, ring, 2 * thick, colour);
     const float ends[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
     for (const auto &end : ends) {
         const float x0 = x + (end[0] * (ring + thick));
         const float y0 = y + (end[1] * (ring + thick));
         overlayLine(x0, y0, x + (end[0] * outer), y + (end[1] * outer), tick + 1.4F, RIM);
-        overlayLine(x0, y0, x + (end[0] * outer), y + (end[1] * outer), tick, TARGET_RED);
+        overlayLine(x0, y0, x + (end[0] * outer), y + (end[1] * outer), tick, colour);
     }
     const float dot = std::max(1.5F, outer * 0.09F);
     overlayDisc(x, y, dot + 0.7F, RIM);
-    overlayDisc(x, y, dot, TARGET_RED);
+    overlayDisc(x, y, dot, colour);
     if (badge != 0) {
         reachBadge(x + (outer * 0.95F), y + (outer * 0.95F), std::max(3.8F, outer * 0.2F), badge == 1);
     }
@@ -127,11 +130,11 @@ void arrowCursor(float x, float y, int badge)
  * s is s across the screen and s/2 down, the rise above it), and a laser
  * dot on what the shot meets first, with a short beam fading back towards
  * the Silencer. */
-void aimMarks()
+bool aimMarks()
 {
     PointerAim aim;
     if (!pointerAim(&aim)) {
-        return;
+        return false;
     }
     float toX;
     float toY;
@@ -152,19 +155,23 @@ void aimMarks()
     const float dy = fromY - stopY;
     const float length = std::max(std::abs(dx), std::abs(dy));
     if (length > 1) {
-        /* Forty pixels of beam at most, in steps that fade. */
-        const float reach = std::min(length, 40.0F) / length;
-        const int steps = 8;
+        /* Sixty-four pixels of beam at most, in steps that fade: a soft
+         * glow round a bright core. */
+        const float reach = std::min(length, 64.0F) / length;
+        const int steps = 10;
         for (int i = 0; i < steps; i++) {
             const float a = reach * static_cast<float>(i) / steps;
             const float b = reach * static_cast<float>(i + 1) / steps;
-            const auto alpha = static_cast<std::uint32_t>(0xa0 * (steps - i) / steps);
-            overlayLine(stopX + (dx * a), stopY + (dy * a), stopX + (dx * b), stopY + (dy * b), 1.2F,
-                        (LASER & 0xffffff00U) | alpha);
+            const auto fade = static_cast<std::uint32_t>(steps - i);
+            overlayLine(stopX + (dx * a), stopY + (dy * a), stopX + (dx * b), stopY + (dy * b), 4.5F,
+                        (LASER & 0xffffff00U) | (0x48U * fade / steps));
+            overlayLine(stopX + (dx * a), stopY + (dy * a), stopX + (dx * b), stopY + (dy * b), 2.2F,
+                        (LASER & 0xffffff00U) | (0xe8U * fade / steps));
         }
     }
-    overlayDisc(stopX, stopY, aim.blocked ? 2.6F : 2.0F, SHADOW);
-    overlayDisc(stopX, stopY, aim.blocked ? 1.9F : 1.4F, LASER);
+    overlayDisc(stopX, stopY, aim.blocked ? 3.2F : 2.6F, SHADOW);
+    overlayDisc(stopX, stopY, aim.blocked ? 2.4F : 1.9F, LASER);
+    return aim.hits;
 }
 
 /* The NPCs hit lately (noteHit): the most hit points each had in its
@@ -285,8 +292,8 @@ void drawHud()
     const u16 item = pointerItemUnder(pointerScreenX(), pointerScreenY());
     const int badge = item == 0U ? 0 : pointerItemInReach(item) ? 1 : 2;
     if (pointerWeaponOut()) {
-        aimMarks();
-        targetCursor(x, y, badge);
+        const bool hits = aimMarks();
+        targetCursor(x, y, badge, hits);
         return;
     }
     arrowCursor(x, y, badge);
