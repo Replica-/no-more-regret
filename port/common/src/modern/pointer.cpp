@@ -171,12 +171,24 @@ bool drawing(Npc &npc)
     return npc.isBusy() && npc.lastAnimSet() == ANIM_READY_SMALL;
 }
 
+/* The draw: with the weapon drawn already, standing as at peace (No
+ * Regret's teleport in leaves him so, the gun in his hand), the combat
+ * stand, not the draw again. */
+u16 readyAnim(Npc &npc)
+{
+    if (npc.isWeaponDrawn() != 0U && npc.isKneeling() == 0U) {
+        const Item gun(npc.activeWeapon());
+        return gun.isValid() && smallWeapon(gun.shape()) == 0U ? ANIM_COMBAT_STAND_LARGE : ANIM_COMBAT_STAND_SMALL;
+    }
+    return ANIM_READY_SMALL;
+}
+
 /* The weapon drawn, or as soon as the Silencer is free (he is often in the
  * middle of a turn or a step): the draw waits instead of being lost. */
 void draw(Npc &npc)
 {
     if (!npc.isBusy()) {
-        npc.doAnim(ANIM_READY_SMALL, DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
+        npc.doAnim(readyAnim(npc), DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
     } else {
         buttons.pendingDraw = 1;
     }
@@ -672,7 +684,7 @@ void pointerTick()
     if (buttons.pendingDraw != 0U && !npc.isBusy()) {
         buttons.pendingDraw = 0;
         if (!weaponOut(npc)) {
-            npc.doAnim(ANIM_READY_SMALL, DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
+            npc.doAnim(readyAnim(npc), DIRECTION_CURRENT, ONLY_IF_IDLE, 0);
         }
     }
     /* The right button held a fifth of a second fires until let go, from
