@@ -23,13 +23,15 @@ namespace {
  * to the right and h * SLANT_DOWN / 16 down from them. */
 const int SLANT_ACROSS = 8;
 const int SLANT_DOWN = 4;
-/* What is left of a colour in the shadow, in sixteenths. */
-const int SHADE = 6;
+/* What is left of a colour in the shadow, in sixteenths: soft, and fading
+ * from the feet to its far end (the head's), in SHADES steps. */
+const int SHADES = 3;
+const int SHADE[SHADES] = {10, 12, 14};
 
-/* Each colour darkened (the palette's nearest), 0 until worked out; the
- * map they were worked out for. */
-u8 darkened[256];
-u8 darkenedKnown[256];
+/* Each colour darkened in each shade (the palette's nearest), 0 until
+ * worked out; the map they were worked out for. */
+u8 darkened[SHADES][256];
+u8 darkenedKnown[SHADES][256];
 u16 shadowMap = 0xffff;
 
 /* The pixels a shadow has darkened, round its feet: each marked with the
@@ -39,13 +41,13 @@ const int MARK_HEIGHT = 192;
 u8 marks[MARK_HEIGHT][MARK_WIDTH];
 u8 markNumber = 0;
 
-u8 darkenedOf(u8 under)
+u8 darkenedOf(u8 under, int shade)
 {
-    if (darkenedKnown[under] == 0U) {
+    if (darkenedKnown[shade][under] == 0U) {
         const RGB *colours = gamePalette->data.get();
-        const int red = (colours[under].red * SHADE) / 16;
-        const int green = (colours[under].green * SHADE) / 16;
-        const int blue = (colours[under].blue * SHADE) / 16;
+        const int red = (colours[under].red * SHADE[shade]) / 16;
+        const int green = (colours[under].green * SHADE[shade]) / 16;
+        const int blue = (colours[under].blue * SHADE[shade]) / 16;
         int best = 0;
         int bestDistance = 1 << 30;
         for (int i = 0; i < 256; i++) {
@@ -58,17 +60,20 @@ u8 darkenedOf(u8 under)
                 bestDistance = distance;
             }
         }
-        darkened[under] = static_cast<u8>(best);
-        darkenedKnown[under] = 1;
+        darkened[shade][under] = static_cast<u8>(best);
+        darkenedKnown[shade][under] = 1;
     }
-    return darkened[under];
+    return darkened[shade][under];
 }
 
 /* The colour darkened exactly (0xRRGGBB), for the hardware scene. */
-std::uint32_t darkenedExactly(u8 under)
+std::uint32_t darkenedExactly(u8 under, int shade)
 {
     const RGB *colours = gamePalette->data.get();
-    const auto part = [](int component) { return static_cast<std::uint32_t>((component * SHADE * 255) / (16 * 63)); };
+    const int left = SHADE[shade];
+    const auto part = [left](int component) {
+        return static_cast<std::uint32_t>((component * left * 255) / (16 * 63));
+    };
     return part(colours[under].red) << 16 | part(colours[under].green) << 8 | part(colours[under].blue);
 }
 
@@ -106,7 +111,9 @@ void paintShadow(u16 item, const ShapeFrame *frame, i16 x, i16 y, bool mirrored,
     }
     if (currentMap != shadowMap) {
         shadowMap = currentMap;
-        std::fill(std::begin(darkenedKnown), std::end(darkenedKnown), 0);
+        for (auto &known : darkenedKnown) {
+            std::fill(std::begin(known), std::end(known), 0);
+        }
     }
     if (++markNumber == 0) {
         for (auto &row : marks) {
@@ -140,6 +147,9 @@ void paintShadow(u16 item, const ShapeFrame *frame, i16 x, i16 y, bool mirrored,
         const int above = std::max(0, feetY - screenY);
         const int shadowY = above > 0 ? feetY + ((above * SLANT_DOWN) / 16) : screenY;
         const int shift = (above * SLANT_ACROSS) / 16;
+        /* Darkest at the feet, fading toward the far end. */
+        const int tall = std::max(1, feetY - static_cast<int>(top));
+        const int shade = std::min(SHADES - 1, (above * SHADES) / tall);
         std::int32_t column = 0;
         while (column < width) {
             column += *p++;
@@ -165,9 +175,9 @@ void paintShadow(u16 item, const ShapeFrame *frame, i16 x, i16 y, bool mirrored,
                 marks[my][mx] = markNumber;
                 u8 *pixel = view.address(static_cast<s16>(shadowX), static_cast<s16>(shadowY));
                 const u8 under = *pixel;
-                *pixel = darkenedOf(under);
+                *pixel = darkenedOf(under, shade);
                 /* With the hardware scene, the darkening exactly (colours.h). */
-                keepExact(view, pixel, *pixel, darkenedExactly(under));
+                keepExact(view, pixel, *pixel, darkenedExactly(under, shade));
             }
             column += length;
         }

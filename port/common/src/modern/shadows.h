@@ -3,9 +3,10 @@
  * direction for all of them: the frame's pixels laid down from its feet
  * along the floor to the lower right (half as far down as across, as the
  * floor's lines go), darkening what is under them in the palette's nearest
- * colour to it darkened. Painted into view just before the character
- * (DL_ItemNode::draw), its place on the screen widened to the shadow's (the
- * floor under it drawn first, and redrawn as it moves): what stands in front
+ * colour to it darkened, softly, fading toward its far end. Painted into
+ * view just before the character (DL_ItemNode::draw), its place on the
+ * screen widened to the shadow's (the floor under it drawn first, and
+ * redrawn as it moves): what stands in front
  * draws over it, the character over its own. Part of the port's controls
  * (pointer.h's setting), which the tests' original controls turn off. */
 #ifndef PORT_SHADOWS_H
