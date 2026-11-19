@@ -1,6 +1,7 @@
 /* ANIMPRIM.C (Code46, No Regret's 1168, No Remorse's 1150; the addresses are
  * No Regret's): an NPC's animation process, the games' differences as each
  * game's values (animprim_game.h). */
+#include <algorithm>
 #include "animprim.h"
 #include "animcach.h"
 #include "anchor.h"
@@ -796,7 +797,14 @@ bool AnimPrimitive::advanceFrame(Npc &npc, const AnimFrame &current, const AnimF
         return false;
     }
     if ((targetPoint == nullptr) && (info.repeat != 0U)) {
-        AccWait *wait = new AccWait(static_cast<ui16>(info.repeat * ((fast != 0U) ? 2 : 1)), item);
+        /* The port's: the controlled NPC's start of a run goes a third
+         * quicker, its frames 3 ticks to 2 (at least 1). */
+        u16 repeat = info.repeat;
+        if (item == controlledActor && (anim == ANIM_START_RUN || anim == ANIM_START_RUN_SMALL ||
+                                        anim == ANIM_START_RUN_LARGE)) {
+            repeat = static_cast<u16>(std::max(1, ((repeat * 2) + 1) / 3));
+        }
+        AccWait *wait = new AccWait(static_cast<ui16>(repeat * ((fast != 0U) ? 2 : 1)), item);
         wait->block(this);
         wait->listenTo(pid);
         wait->resume();
