@@ -376,6 +376,11 @@ void placeReticle()
     } else {
         showSprite(reticleSprite, x, y, z);
     }
+    /* The port's keyboard and mouse controls: never drawn, the pointer's
+     * cursor (hud.cpp) stands for it from the first frame. */
+    if (pointerSetting() && reticleSprite != 0xffff) {
+        sprites[reticleSprite].flags |= SPRITE_UNSEEN;
+    }
     reticleMoved = 0;
 }
 
