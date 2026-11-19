@@ -14,6 +14,7 @@
 #include "enhancements.h"
 #include "gamepal.h"
 #include "hud.h"
+#include "imported.h"
 #include "keyboard.h"
 #include "newgump.h"
 #include "npc.h"
@@ -485,7 +486,7 @@ void preview()
     AnimFrame step;
     const auto direction = static_cast<u8>(((systemTimer->time() / 40) % 8) * 2);
     getAnimFrame(SILENCER_SHAPE, ANIM_STAND, direction, 0, &step);
-    ShapeFrame *frame = cachedShapeFrame(SILENCER_SHAPE, step.frame);
+    ShapeFrame *frame = cachedShapeFrame(SILENCER_SHAPE, animShapeFrame(step));
     if (frame == nullptr) {
         return;
     }

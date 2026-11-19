@@ -10,6 +10,7 @@
 #include "death.h"
 #include "control_game.h"
 #include "animcach.h"
+#include "imported.h"
 #include "animprim.h"
 #include "asylum.h"
 #include "boboboom.h"
@@ -906,7 +907,7 @@ void setFirstFrame(u16 npc, u16 anim)
     const u16 shape = itemShape[npc];
     u16 value;
     getAnimFrame(shape, anim, self.direction(), 0, &frame);
-    self.setFrame(frame.frame);
+    self.setFrame(animShapeFrame(frame));
     if (frame.flipped) {
         self.setFlags(self.flags() | ITEM_FLIPPED);
     }
@@ -1437,6 +1438,15 @@ u16 sideStep(char facing, char &toward, u16 right, u16 left)
 
 /* The kneel key, a new press only (the key's repeats do nothing): kneel
  * or stand up. */
+/* A kneeling NPC steps to the side kneeling: No Regret's; No Remorse's
+ * with the port's keyboard and mouse controls, No Regret's steps imported
+ * (imported.h). Else No Remorse's slide keys stand it up. */
+bool slidesKneeling(Npc &npc)
+{
+    return MOVE_NO_REGRET || (pointerSetting() && hasAnim(npc.shape(), ANIM_KNEELING_SLIDE_LEFT) &&
+                              hasAnim(npc.shape(), ANIM_KNEELING_SLIDE_RIGHT));
+}
+
 u16 kneelOrStand(Npc &npc, const KeyEvent *key)
 {
     if (key->repeat != 1) {
@@ -1496,11 +1506,11 @@ u16 combatStep(Npc &npc, const MoveKey &m, char &toward)
     case Action::TURN_LEFT:
     case Action::MOVE_SOUTHWEST:
     case Action::NUMPAD_TURN_LEFT:
-        return (MOVE_NO_REGRET && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_LEFT : ANIM_SLIDE_LEFT;
+        return (slidesKneeling(npc) && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_LEFT : ANIM_SLIDE_LEFT;
     case Action::TURN_RIGHT:
     case Action::MOVE_NORTHEAST:
     case Action::NUMPAD_TURN_RIGHT:
-        return (MOVE_NO_REGRET && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_RIGHT : ANIM_SLIDE_RIGHT;
+        return (slidesKneeling(npc) && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_RIGHT : ANIM_SLIDE_RIGHT;
     case Action::KNEEL:
         return kneelOrStand(npc, m.key);
     default:
@@ -1594,19 +1604,20 @@ u16 keepMoving(const MoveKey &m)
 }
 
 /* The strafe keys: slide, advance, retreat, roll. No Remorse's stand a
- * kneeling NPC up (No Regret's move it kneeling), except the rolls, which
+ * kneeling NPC up (No Regret's move it kneeling; the slides too with the
+ * port's controls, slidesKneeling), except the rolls, which
  * have the kneeling and standing rolls the other way round (original). */
 u16 strafe(Npc &npc, Action action)
 {
     switch (action) {
     case Action::SLIDE_LEFT:
         if (npc.isKneeling() != 0U) {
-            return MOVE_NO_REGRET ? ANIM_KNEELING_SLIDE_LEFT : ANIM_KNEEL_END;
+            return slidesKneeling(npc) ? ANIM_KNEELING_SLIDE_LEFT : ANIM_KNEEL_END;
         }
         return ANIM_SLIDE_LEFT;
     case Action::SLIDE_RIGHT:
         if (npc.isKneeling() != 0U) {
-            return MOVE_NO_REGRET ? ANIM_KNEELING_SLIDE_RIGHT : ANIM_KNEEL_END;
+            return slidesKneeling(npc) ? ANIM_KNEELING_SLIDE_RIGHT : ANIM_KNEEL_END;
         }
         return ANIM_SLIDE_RIGHT;
     case Action::ADVANCE:
@@ -1645,10 +1656,10 @@ u16 numLockMove(Controller &controller, Npc &npc, const MoveKey &m, char &toward
         return jumpAhead(npc, m.lastAnim);
     case Action::MOVE_WEST:
     case Action::NUMPAD_SLIDE_LEFT:
-        return (MOVE_NO_REGRET && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_LEFT : ANIM_SLIDE_LEFT;
+        return (slidesKneeling(npc) && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_LEFT : ANIM_SLIDE_LEFT;
     case Action::MOVE_NORTH:
     case Action::NUMPAD_SLIDE_RIGHT:
-        return (MOVE_NO_REGRET && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_RIGHT : ANIM_SLIDE_RIGHT;
+        return (slidesKneeling(npc) && (npc.isKneeling() != 0U)) ? ANIM_KNEELING_SLIDE_RIGHT : ANIM_SLIDE_RIGHT;
     case Action::MOVE_SOUTH:
     case Action::NUMPAD_ROLL_LEFT:
         return (npc.isKneeling() != 0U) ? ANIM_KNEEL_ROLL_LEFT : ANIM_COMBAT_ROLL_LEFT;

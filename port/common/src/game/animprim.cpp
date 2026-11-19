@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "animprim.h"
 #include "animcach.h"
+#include "imported.h"
 #include "anchor.h"
 #include "boboboom.h"
 #include "box.h"
@@ -787,7 +788,7 @@ bool AnimPrimitive::advanceFrame(Npc &npc, const AnimFrame &current, const AnimF
                                  const ItemPoint &next)
 {
     if (targetPoint == nullptr) {
-        npc.setFrame(current.frame);
+        npc.setFrame(animShapeFrame(current));
         if ((fast != 0U) && !frameEvents(npc, skipped)) {
             return false;
         }

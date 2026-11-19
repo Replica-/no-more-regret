@@ -1,10 +1,12 @@
-/* An animation of No Regret's and its frames, in No Remorse. See imported.h. */
+/* Animations of No Regret's and their frames, in No Remorse. See imported.h. */
 #include "imported.h"
 #include "gamestate.h"
 #include "actanim.h"
 #include "astream.h"
 #include "file.h"
 #include "filespec.h"
+#include "animfile.h"
+#include "animfrm.h"
 #include "animprim.h"
 #include "gamefile.h"
 #include "pointer.h"
@@ -17,59 +19,70 @@
 
 namespace {
 
-/* static\fwdroll.dat (forward_roll.py): "FWDR"; the shape and the
- * animation's number, its AnimInfo and its frames (frames x directions
- * AnimFrames, the shape's frames numbered past its own); the first of the
- * imported frames and their count, the size of each and their bytes, as
- * the shape file holds a frame; "OVLY", the count of overlay types and the
- * weapon overlays of each. Read when first asked for, into the game's
- * memory (the frames drawn are the game's, as missingFrame is), and this
- * record of them in the arena: a snapshot or a rewind takes both back
- * together, read or not. */
+/* static\imported.dat (import_anims.py): "IMPA"; the shape and the count of
+ * animations; each animation's number, its AnimInfo and its frames (frames x
+ * directions AnimFrames, the shape's frames numbered past its own, unknown0d
+ * their 13th bit), the count of overlay types and the weapon overlays of
+ * each; then the first of the imported frames and their count, the size of
+ * each and their bytes, as the shape file holds a frame. Read when first
+ * asked for, into the game's memory (the frames drawn are the game's, as
+ * missingFrame is), and this record of them in the arena: a snapshot or a
+ * rewind takes both back together, read or not. */
+constexpr u16 MOST_ANIMS = 4;
+struct ImportedAnim {
+    u16 anim;
+    AnimInfo info;
+    u16 entries;
+    AnimFrame *frames;
+    u16 overlayTypes;
+    OverlayFrame *overlays;
+};
 struct Imported {
     bool read;
     bool any;
     u16 shape;
-    u16 anim;
-    AnimInfo info;
-    u16 entries;
+    u16 anims;
+    ImportedAnim anim[MOST_ANIMS];
     u16 first;
     u16 count;
-    AnimFrame *frames;
     /* Each frame's start in bytes, and the end after the last. */
     u32 *starts;
     u8 *bytes;
-    u16 overlayTypes;
-    OverlayFrame *overlays;
 };
 Imported &imported = gameGlobal<Imported>();
 
-void readImported()
+bool readAnim(File &file, ImportedAnim &anim)
 {
-    imported.read = true;
-    char *path = makePath(nullptr, staticDirectory, "fwdroll.dat", nullptr);
-    if (fileExists(path) == 0) {
-        return;
+    if (file.read(&anim.anim, 2, -1) != 2 || anim.anim >= ANIM_ACTIONS || file.read(&anim.info, 4, -1) != 4 ||
+        file.read(&anim.entries, 2, -1) != 2) {
+        return false;
     }
-    File file;
-    file.open(path, FILE_READ, 0);
-    if (file.isOpen() == 0U) {
-        return;
+    const auto size = static_cast<s32>(anim.entries * sizeof(AnimFrame));
+    anim.frames = new AnimFrame[anim.entries];
+    if (file.read(anim.frames, size, -1) != size || file.read(&anim.overlayTypes, 2, -1) != 2) {
+        return false;
     }
-    char magic[4];
-    if (file.read(magic, 4, 0) != 4 || std::memcmp(magic, "FWDR", 4) != 0) {
-        return;
+    if (anim.overlayTypes != 0) {
+        const auto overlays = static_cast<s32>(static_cast<u32>(anim.entries) * anim.overlayTypes * sizeof(OverlayFrame));
+        anim.overlays = new OverlayFrame[static_cast<u32>(anim.entries) * anim.overlayTypes];
+        if (file.read(anim.overlays, overlays, -1) != overlays) {
+            return false;
+        }
     }
-    file.read(&imported.shape, 2, -1);
-    file.read(&imported.anim, 2, -1);
-    file.read(&imported.info, 4, -1);
-    file.read(&imported.entries, 2, -1);
-    imported.frames = new AnimFrame[imported.entries];
-    file.read(imported.frames, static_cast<s32>(imported.entries * sizeof(AnimFrame)), -1);
-    file.read(&imported.first, 2, -1);
-    file.read(&imported.count, 2, -1);
+    return true;
+}
+
+bool readFrames(File &file)
+{
+    if (file.read(&imported.first, 2, -1) != 2 || file.read(&imported.count, 2, -1) != 2) {
+        return false;
+    }
     auto *sizes = new u32[imported.count];
-    file.read(sizes, static_cast<s32>(imported.count * sizeof(u32)), -1);
+    const auto sizeBytes = static_cast<s32>(imported.count * sizeof(u32));
+    if (file.read(sizes, sizeBytes, -1) != sizeBytes) {
+        delete[] sizes;
+        return false;
+    }
     /* Each frame's start, kept to 16 bytes as an allocation's (the
      * ShapeFrame after the FrameBlock as the cache's are aligned). */
     imported.starts = new u32[imported.count + 1];
@@ -80,23 +93,41 @@ void readImported()
     }
     imported.starts[imported.count] = total;
     imported.bytes = new u8[total];
-    for (u16 i = 0; i < imported.count; i++) {
-        file.read(imported.bytes + imported.starts[i], static_cast<s32>(sizes[i]), -1);
+    bool whole = true;
+    for (u16 i = 0; i < imported.count && whole; i++) {
+        whole = file.read(imported.bytes + imported.starts[i], static_cast<s32>(sizes[i]), -1) ==
+                static_cast<s32>(sizes[i]);
     }
     delete[] sizes;
-    char overlayMagic[4];
-    if (file.read(overlayMagic, 4, -1) == 4 && std::memcmp(overlayMagic, "OVLY", 4) == 0 &&
-        file.read(&imported.overlayTypes, 2, -1) == 2) {
-        const u32 entries = static_cast<u32>(imported.entries) * imported.overlayTypes;
-        imported.overlays = new OverlayFrame[entries];
-        if (file.read(imported.overlays, static_cast<s32>(entries * sizeof(OverlayFrame)), -1) !=
-            static_cast<s32>(entries * sizeof(OverlayFrame))) {
-            delete[] imported.overlays;
-            imported.overlays = nullptr;
-            imported.overlayTypes = 0;
-        }
+    return whole;
+}
+
+void readImported()
+{
+    imported.read = true;
+    char *path = makePath(nullptr, staticDirectory, "imported.dat", nullptr);
+    if (fileExists(path) == 0) {
+        return;
     }
+    File file;
+    file.open(path, FILE_READ, 0);
+    if (file.isOpen() == 0U) {
+        return;
+    }
+    char magic[4];
+    bool whole = file.read(magic, 4, 0) == 4 && std::memcmp(magic, "IMPA", 4) == 0 &&
+                 file.read(&imported.shape, 2, -1) == 2 && file.read(&imported.anims, 2, -1) == 2 &&
+                 imported.anims <= MOST_ANIMS;
+    for (u16 a = 0; whole && a < imported.anims; a++) {
+        whole = readAnim(file, imported.anim[a]);
+    }
+    whole = whole && readFrames(file);
     file.close();
+    if (!whole) {
+        releaseImported();
+        imported.read = true;
+        return;
+    }
     imported.any = true;
 }
 
@@ -106,6 +137,20 @@ Imported *data()
         readImported();
     }
     return imported.any ? &imported : nullptr;
+}
+
+const ImportedAnim *find(u16 shape, u16 anim)
+{
+    Imported *in = data();
+    if (in == nullptr || shape != in->shape) {
+        return nullptr;
+    }
+    for (u16 a = 0; a < in->anims; a++) {
+        if (in->anim[a].anim == anim) {
+            return &in->anim[a];
+        }
+    }
+    return nullptr;
 }
 
 }
@@ -121,32 +166,44 @@ ShapeFrame *importedFrame(u16 shape, u16 frame)
     return reinterpret_cast<ShapeFrame *>(in->bytes + in->starts[frame - in->first] + sizeof(FrameBlock));
 }
 
+u16 animShapeFrame(const AnimFrame &frame)
+{
+    return (frame.unknown0d != 0U && data() != nullptr) ? static_cast<u16>(frame.frame | 0x1000U) : frame.frame;
+}
+
 void importAnims(u16 shape, ActorAnim *table)
 {
     Imported *in = data();
-    if (in == nullptr || shape != in->shape || table->actions[in->anim] != nullptr) {
+    if (in == nullptr || shape != in->shape) {
         return;
     }
-    auto *action = new AnimAction;
-    action->info = in->info;
-    action->allocate();
-    std::memcpy(action->frameList, in->frames, std::min<std::size_t>(action->size(), in->entries * sizeof(AnimFrame)));
-    table->setAction(static_cast<i16>(in->anim), action);
+    for (u16 a = 0; a < in->anims; a++) {
+        const ImportedAnim &from = in->anim[a];
+        if (table->actions[from.anim] != nullptr) {
+            continue;
+        }
+        auto *action = new AnimAction;
+        action->info = from.info;
+        action->allocate();
+        std::memcpy(action->frameList, from.frames,
+                    std::min<std::size_t>(action->size(), from.entries * sizeof(AnimFrame)));
+        table->setAction(static_cast<i16>(from.anim), action);
+    }
 }
 
 const OverlayFrame *importedOverlays(u16 anim, u16 type)
 {
     const Imported *in = data();
-    if (in == nullptr || anim != in->anim || in->overlays == nullptr || type >= in->overlayTypes) {
+    const ImportedAnim *from = (in != nullptr) ? find(in->shape, anim) : nullptr;
+    if (from == nullptr || from->overlays == nullptr || type >= from->overlayTypes) {
         return nullptr;
     }
-    return in->overlays + (static_cast<u32>(type) * in->entries);
+    return from->overlays + (static_cast<u32>(type) * from->entries);
 }
 
 bool importedAnim(u16 shape, u16 anim)
 {
-    const Imported *in = data();
-    return in != nullptr && shape == in->shape && anim == in->anim;
+    return find(shape, anim) != nullptr;
 }
 
 namespace {
@@ -194,9 +251,11 @@ u8 quickenedFrames(u16 shape, u16 anim)
 
 void releaseImported()
 {
-    delete[] imported.frames;
+    for (ImportedAnim &anim : imported.anim) {
+        delete[] anim.frames;
+        delete[] anim.overlays;
+    }
     delete[] imported.starts;
     delete[] imported.bytes;
-    delete[] imported.overlays;
     imported = Imported{};
 }

@@ -30,6 +30,7 @@
 #include "explode.h"
 #include "camera.h"
 #include "animcach.h"
+#include "imported.h"
 #include "status.h"
 #include "world.h"
 #include "cprotmem.h"
@@ -752,8 +753,9 @@ u16 Npc::doAnim(u16 anim, u16 direction, u16 maxBusy, u8 kill)
     }
     const u32 time = systemTimer->ticks;
     /* No Remorse's has no animation 16h nor the kneeling slide to the right
-     * (kept). */
-    if (!ANIM_16_AND_SLIDE_RIGHT && (anim == 0x16 || anim == ANIM_KNEELING_SLIDE_RIGHT)) {
+     * (kept), but the port's, imported (imported.h). */
+    if (!ANIM_16_AND_SLIDE_RIGHT && (anim == 0x16 || anim == ANIM_KNEELING_SLIDE_RIGHT) &&
+        !importedAnim(shape(), anim)) {
         halt();
     }
     const AnimStart start = animStart(anim);
