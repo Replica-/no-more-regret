@@ -31,6 +31,9 @@ void effectsItemDrawing(Viewport &view, u16 item, u16 frame, bool before, bool s
 void drawEffectCovers();
 /* Draws them over the world (hud.cpp, after the lighting). */
 void drawEffects();
+/* The NPC died (loot.h): its gun is flung out of its hand, turning over,
+ * bounces where it fell and lies a while, for show (no item). */
+void effectsDropGun(u16 npc);
 /* A shot left the gun at map point x,y,z (fireWeapon). */
 void effectsShot(u16 x, u16 y, u8 z);
 /* The item is going away (Item::destroy): the flames a blast leaves burn

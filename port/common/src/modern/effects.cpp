@@ -10,6 +10,7 @@
 #include "item.h"
 #include "itemcach.h"
 #include "itemdata.h"
+#include "npc.h"
 #include "overlay.h"
 #include "screen.h"
 #include "profile.h"
@@ -787,6 +788,98 @@ void burn(u16 key, u16 mapX, u16 mapY, i16 mapZ, u16 shape, bool mirrored, const
     drawFire(*fire, true, x, y);
 }
 
+/* The guns the dead fling (effectsDropGun), for show only: no item, not
+ * to be picked up. Each flies from the hand, turning over (the shape's
+ * frames round, mirrored by turns), bounces on the floor where its owner
+ * fell, lies still and fades. Map units and ticks. */
+const u32 GUN_LIES = 480;
+const u32 GUN_FADES = 60;
+struct Gun {
+    bool used;
+    u16 shape;
+    u16 frames;
+    float x;
+    float y;
+    float z;
+    float vx;
+    float vy;
+    float vz;
+    float floor;
+    int bounces;
+    u32 since;
+    u32 landed;
+    u32 tick;
+    float spin;
+};
+Gun guns[8];
+
+/* A tick of the gun's flight: its fall, its bounces (each less), its turning
+ * while it flies. */
+void flyGun(Gun &gun)
+{
+    if (gun.landed != 0U) {
+        return;
+    }
+    gun.vz -= 0.7F;
+    gun.x += gun.vx;
+    gun.y += gun.vy;
+    gun.z += gun.vz;
+    gun.spin += 0.5F + (0.06F * (std::abs(gun.vx) + std::abs(gun.vy)));
+    if (gun.z > gun.floor) {
+        return;
+    }
+    gun.z = gun.floor;
+    if (gun.bounces >= 3 || gun.vz > -2.5F) {
+        gun.landed = std::max<u32>(now(), 1);
+        return;
+    }
+    gun.bounces++;
+    gun.vz = -gun.vz * 0.45F;
+    gun.vx *= 0.6F;
+    gun.vy *= 0.6F;
+}
+
+/* The gun on the screen: its shadow on the floor under it, then the gun,
+ * fading at the end. */
+void drawGun(const Gun &gun)
+{
+    float x = 0;
+    float y = 0;
+    const auto alpha = [&gun]() {
+        if (gun.landed == 0U) {
+            return 1.0F;
+        }
+        const u32 lying = now() - gun.landed;
+        return lying < GUN_LIES - GUN_FADES ? 1.0F : static_cast<float>(GUN_LIES - lying) / GUN_FADES;
+    }();
+    mapToOverlay(static_cast<u16>(gun.x), static_cast<u16>(gun.y), static_cast<i16>(gun.floor), &x, &y);
+    const float height = std::clamp((gun.z - gun.floor) / 48.0F, 0.0F, 1.0F);
+    overlayDisc(x, y, 4.0F - (2.0F * height),
+                static_cast<std::uint32_t>(std::clamp((0.35F - (0.2F * height)) * alpha, 0.0F, 1.0F) * 255));
+    mapToOverlay(static_cast<u16>(gun.x), static_cast<u16>(gun.y), static_cast<i16>(gun.z), &x, &y);
+    const int turn = static_cast<int>(gun.spin);
+    const auto frame = static_cast<u16>(gun.landed != 0U ? 0 : turn % std::max<u16>(1, gun.frames));
+    const bool mirrored = gun.landed == 0U && ((turn / std::max<u16>(1, gun.frames)) % 2) == 1;
+    ShapeFrame *image = cachedShapeFrame(gun.shape, frame);
+    if (image == nullptr) {
+        return;
+    }
+    const auto *bytes = reinterpret_cast<const u8 *>(image);
+    const s32 originX = mirrored ? drawframe::dword(bytes + 4) - 1 - drawframe::dword(bytes + 0xc)
+                                 : drawframe::dword(bytes + 0xc);
+    const float left = x - static_cast<float>(originX);
+    const float top = y - static_cast<float>(drawframe::dword(bytes + 0x10));
+    int w = 0;
+    int h = 0;
+    if (!makePicture(bytes, mirrored, 0, 0, false, &w, &h)) {
+        return;
+    }
+    for (int i = 0; i < w * h; i++) {
+        picture[i] = (picture[i] & 0xffffff00U) | static_cast<std::uint32_t>(static_cast<float>(picture[i] & 0xffU) * alpha);
+    }
+    overlayPictureAs(picture, w, h, left, top, static_cast<float>(w), static_cast<float>(h), OverlayBlend::BLEND, false);
+}
+
 /* The cover of the item the game drew on the screen lately. */
 const Cover *freshCover(u16 item)
 {
@@ -885,6 +978,52 @@ void drawEffectCovers()
     }
 }
 
+void effectsDropGun(u16 npc)
+{
+    if (!on()) {
+        return;
+    }
+    Npc dead(npc);
+    const u16 weapon = dead.activeWeapon();
+    if (weapon == 0U) {
+        return;
+    }
+    Gun *gun = &guns[0];
+    for (Gun &each : guns) {
+        if (!each.used) {
+            gun = &each;
+            break;
+        }
+        if (each.since < gun->since) {
+            gun = &each;
+        }
+    }
+    u16 width = 0;
+    u16 height = 0;
+    u16 frames = 1;
+    shapeCache->shapeHeader(itemShape[weapon], &width, &height, &frames);
+    /* Flung away, up and over, a little across its owner's facing. */
+    i16 across = 0;
+    i16 along = 0;
+    alongAngle(static_cast<i16>(random01() * 360), 1000, &across, &along);
+    const float speed = between(4.0F, 6.0F);
+    *gun = Gun{true,
+               itemShape[weapon],
+               frames,
+               static_cast<float>(dead.centreX()),
+               static_cast<float>(dead.centreY()),
+               static_cast<float>(itemZ[npc] + 28),
+               (static_cast<float>(across) / 1000.0F) * speed,
+               (static_cast<float>(along) / 1000.0F) * speed,
+               between(9.0F, 11.5F),
+               static_cast<float>(itemZ[npc]),
+               0,
+               now(),
+               0,
+               now(),
+               random01() * 4};
+}
+
 void effectsShot(u16 x, u16 y, u8 z)
 {
     if (!on()) {
@@ -914,6 +1053,9 @@ void drawEffects()
     if (!on()) {
         lingeringCount = 0;
         flashCount = 0;
+        for (Gun &gun : guns) {
+            gun.used = false;
+        }
         for (Fire &fire : fires) {
             fire.used = false;
         }
@@ -1008,4 +1150,19 @@ void drawEffects()
         flashes[kept++] = flashes[i];
     }
     flashCount = kept;
+    /* The guns the dead flung. */
+    for (Gun &gun : guns) {
+        if (!gun.used) {
+            continue;
+        }
+        if (gun.landed != 0U && time - gun.landed >= GUN_LIES) {
+            gun.used = false;
+            continue;
+        }
+        for (u32 steps = std::min<u32>(time - gun.tick, 6); steps > 0; steps--) {
+            flyGun(gun);
+        }
+        gun.tick = time;
+        drawGun(gun);
+    }
 }

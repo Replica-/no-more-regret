@@ -8,7 +8,6 @@
 #include "control.h"
 #include "pointer.h"
 #include "death.h"
-#include "loot.h"
 #include "control_game.h"
 #include "animcach.h"
 #include "animprim.h"
@@ -631,8 +630,6 @@ void Controller::run()
     }
     /* The port's end of the Silencer's death (death.h). */
     deathTick();
-    /* The port's loot thrown out of the bodies (loot.h). */
-    lootTick();
     /* The port's pointer mode (pointer.h). */
     pointerTick();
 }
