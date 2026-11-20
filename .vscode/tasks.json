@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "D:/development/msys64/usr/bin/bash.exe",
+            "args": [
+                "-lc",
+                "export PATH=/d/development/msys64/ucrt64/bin:$PATH; cd /d/development/no-more-regret && cmake -S port -B build/port -G Ninja && cmake --build build/port --target crusader"
+            ],
+            "options": { "env": { "MSYSTEM": "UCRT64", "CHERE_INVOKING": "1" } },
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}
