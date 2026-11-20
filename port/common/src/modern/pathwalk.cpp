@@ -64,6 +64,8 @@ struct Walk {
     /* The point clicked (walkMark) and when; markAt 0 for none. */
     ItemPoint mark;
     u32 markAt;
+    /* When the walk to an item (item) began (walkTarget). */
+    u32 itemAt;
 };
 Walk &walk = gameGlobal<Walk>();
 
@@ -515,6 +517,7 @@ void walkToItem(u16 item, bool run)
     walk.goalX = static_cast<i16>(it.centreX() + (itemX[npc.id] - npc.centreX()));
     walk.goalY = static_cast<i16>(it.centreY() + (itemY[npc.id] - npc.centreY()));
     walk.goalZ = itemZ[npc.id];
+    walk.itemAt = std::max<u32>(1, systemTimer->time());
 }
 
 void walkHold(bool held)
@@ -551,6 +554,16 @@ void walkStop()
 bool walking()
 {
     return walk.active != 0U;
+}
+
+bool walkTarget(u16 *item, u32 *age)
+{
+    if (walk.active == 0U || walk.item == 0U || walk.itemAt == 0U) {
+        return false;
+    }
+    *item = walk.item;
+    *age = systemTimer->time() - walk.itemAt;
+    return true;
 }
 
 bool walkMark(ItemPoint *point, u32 *age)

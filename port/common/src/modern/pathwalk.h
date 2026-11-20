@@ -27,4 +27,7 @@ void walkTick();
  * ticks since the click: while the walk goes on and a moment after; false
  * when none is shown (a walk to an item, or the forward key's). */
 bool walkMark(ItemPoint *point, u32 *age);
+/* The item a click walks to (to use it when he reaches it), and the ticks
+ * since the click; false when he walks to none. */
+bool walkTarget(u16 *item, u32 *age);
 #endif

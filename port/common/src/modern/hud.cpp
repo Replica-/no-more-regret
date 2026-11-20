@@ -245,6 +245,66 @@ const float CIRCLE[16][2] = {{1, 0},        {0.9239F, 0.3827F},   {0.7071F, 0.70
                              {0, -1},       {0.3827F, -0.9239F},  {0.7071F, -0.7071F},  {0.9239F, -0.3827F}};
 const std::uint32_t MARK = 0x50f070U;
 
+/* The item a click walks to (pathwalk.h's walkTarget): corner brackets
+ * round its picture, closing in as it is clicked and breathing while he
+ * goes, and an arrow over it bobbing, in the walk's mark's colour, over a
+ * shadow. */
+void walkTargetMarker()
+{
+    u16 item = 0;
+    u32 age = 0;
+    if (!walkTarget(&item, &age)) {
+        return;
+    }
+    const ShapeFrame *frame = cachedShapeFrame(itemShape[item], Item(item).frame());
+    if (frame == nullptr || frame->width <= 0 || frame->height <= 0) {
+        return;
+    }
+    /* DL_ItemNode::draw's place of its frame, scrolled. */
+    const i16 hx = static_cast<i16>(itemX[item] >> 1);
+    const i16 hy = static_cast<i16>(itemY[item] >> 1);
+    const auto x = static_cast<float>(hx - hy - scrollX);
+    const auto y = static_cast<float>((hx >> 1) + (hy >> 1) - itemZ[item] - scrollY);
+    const bool mirrored = (itemFlags[item] & ITEM_FLIPPED) != 0;
+    const auto width = static_cast<float>(frame->width);
+    const auto height = static_cast<float>(frame->height);
+    const float left = mirrored ? x - (width - 1 - static_cast<float>(frame->xOffset)) : x - static_cast<float>(frame->xOffset);
+    const float top = y - static_cast<float>(frame->yOffset);
+    const float right = left + width;
+    const float bottom = top + height;
+    /* Closing in over a sixth of a second, then breathing. */
+    const float closing = age < 10 ? static_cast<float>(10 - age) / 10 : 0;
+    const float breath = static_cast<float>((age / 4) % 16);
+    const float pulse = breath < 8 ? breath / 8 : (16 - breath) / 8;
+    const float out = 3 + (10 * closing) + (1.5F * pulse);
+    const float arm = std::clamp(std::min(width, height) / 4, 5.0F, 14.0F);
+    const float bob = 3 * pulse;
+    for (int pass = 0; pass < 2; pass++) {
+        const std::uint32_t colour = pass == 0 ? 0x000000a0U : ((MARK << 8) | 0xffU);
+        const float lineWidth = pass == 0 ? 3.2F : 1.6F;
+        const float l = left - out;
+        const float t = top - out;
+        const float r = right + out;
+        const float b = bottom + out;
+        overlayLine(l, t, l + arm, t, lineWidth, colour);
+        overlayLine(l, t, l, t + arm, lineWidth, colour);
+        overlayLine(r, t, r - arm, t, lineWidth, colour);
+        overlayLine(r, t, r, t + arm, lineWidth, colour);
+        overlayLine(l, b, l + arm, b, lineWidth, colour);
+        overlayLine(l, b, l, b - arm, lineWidth, colour);
+        overlayLine(r, b, r - arm, b, lineWidth, colour);
+        overlayLine(r, b, r, b - arm, lineWidth, colour);
+        /* The arrow over it, pointing down at it. */
+        const float middle = (l + r) / 2;
+        const float tip = t - 4 - bob;
+        if (pass == 0) {
+            overlayTriangle(middle - 7, tip - 9, middle + 7, tip - 9, middle, tip + 1, colour);
+        } else {
+            overlayTriangle(middle - 5.5F, tip - 8, middle + 5.5F, tip - 8, middle, tip - 0.5F, colour);
+        }
+    }
+}
+
 /* The point a click walks to (pathwalk.h's walkMark): a ring flat on the
  * floor, closing in as it appears, and a dot, over a shadow, fading at its
  * end. */
@@ -310,6 +370,7 @@ void drawHud()
         return;
     }
     walkMarker();
+    walkTargetMarker();
     drawJump();
     /* A screen over the world (the options, a message) has the game's own
      * pointer. */
