@@ -46,9 +46,10 @@ const std::uint32_t OUT_OF_REACH = 0xe04040ff;
 const std::uint32_t SPREAD = 0xff3030d0;
 const std::uint32_t LASER = 0xff2020ff;
 /* The laser is not drawn where it meets something this near the Silencer
- * on the screen (pixels from his middle across, half as much up and down,
- * he being tall), his frames' angles not those of a beam so short; it fades
- * in over the next LASER_FADE. */
+ * on the screen (pixels from his middle, the same every way: a longer
+ * reach up and down hid it aimed up or down far from him), his frames'
+ * angles not those of a beam so short; it fades in over the next
+ * LASER_FADE. */
 const float LASER_NEAREST = 108;
 const float LASER_FADE = 16;
 
@@ -167,8 +168,12 @@ bool aimMarks()
     float middleY;
     mapToOverlay(silencer.centreX(), silencer.centreY(),
                  static_cast<i16>(silencer.z() + (typeFlags.info(silencer.shape()).z * 4)), &middleX, &middleY);
-    const float near = std::max(std::abs(stopX - middleX), std::abs(stopY - middleY) / 2);
-    const float shown = std::clamp((near - LASER_NEAREST) / LASER_FADE, 0.0F, 1.0F);
+    /* By the squares (no square root here): 0 within LASER_NEAREST, 1
+     * beyond LASER_FADE more. */
+    const float apart = ((stopX - middleX) * (stopX - middleX)) + ((stopY - middleY) * (stopY - middleY));
+    const float nearest = LASER_NEAREST * LASER_NEAREST;
+    const float full = (LASER_NEAREST + LASER_FADE) * (LASER_NEAREST + LASER_FADE);
+    const float shown = std::clamp((apart - nearest) / (full - nearest), 0.0F, 1.0F);
     if (shown <= 0) {
         return aim.hits;
     }
