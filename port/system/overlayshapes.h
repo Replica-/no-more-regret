@@ -6,6 +6,7 @@
 #include "common.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 struct OverlayShape {
@@ -25,6 +26,11 @@ struct OverlayShape {
     int h = 0;
     u8 blend = 0;
     bool sharp = false;
+    /* A kept picture's (overlayPictureKept): its pixels, shared with the
+     * frames after while its key's version stays, its key and version. */
+    std::shared_ptr<const std::vector<std::uint32_t>> kept = nullptr;
+    std::uint32_t key = 0;
+    std::uint32_t version = 0;
 };
 
 struct Overlay {

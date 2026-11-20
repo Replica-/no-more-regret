@@ -194,6 +194,81 @@ template <class Shown> int showing(const Drawing &drawing, int frameLeft, int fr
     return count;
 }
 
+/* The world's layer in tiles of TILE pixels square of the world (not the
+ * screen: scrolled, a tile's pixels move with it, and stay its own), each
+ * kept by the overlay (overlayPictureKept) and made again only when the
+ * screen's pixels it covers have changed (an item moved over it, an
+ * animation): what the screen showed there when it was made, its part of
+ * the tile shown, whether it had any upscaled pixel, its version and the
+ * frame it was last drawn in (the overlay forgets a picture not drawn for a
+ * while: made again then). */
+const int TILE = 64;
+const int TILES = 1024;
+struct Tile {
+    bool used;
+    int x;
+    int y;
+    int left;
+    int top;
+    int right;
+    int bottom;
+    bool empty;
+    u32 version;
+    u32 drawn;
+    /* The frame it was made in, and the palette's entries it shows. */
+    u32 made;
+    std::uint64_t entries[4];
+    u8 seen[TILE * TILE];
+};
+Tile tiles[TILES];
+u32 tileVersion = 0;
+u32 tileFrames = 0;
+/* What all the tiles were made for: the map and the frame's size; all
+ * made again when one changes. Each entry's fade as last seen and the
+ * frame it last changed in: a tile showing one changed since it was made
+ * is made again (the game turns some of its colours round each frame, the
+ * lights' and the screens'; a fade turns all). */
+u16 tilesMap = 0xffff;
+int tilesWidth = 0;
+int tilesHeight = 0;
+int fadeSeen[256][3];
+u32 fadeChanged[256];
+const std::uint32_t TILE_KEYS = 0x55500000U;
+/* A tile's pixels as made, and the frame's pixels shown (the video
+ * memory's in the middle, the sides' round it). */
+std::uint32_t tilePixels[TILE * SCALE * TILE * SCALE];
+u8 frameShown[static_cast<std::size_t>(WIDE_FRAME_MOST) * TALL_FRAME_MOST];
+
+/* The tile of the world's x, y: its slot, the oldest of its probes when it
+ * has none (another's, forgotten). */
+int tileSlot(int x, int y)
+{
+    const auto hash = static_cast<std::uint32_t>((x * 73856093) ^ (y * 19349663));
+    int oldest = -1;
+    for (int probe = 0; probe < 16; probe++) {
+        const int slot = static_cast<int>((hash + static_cast<std::uint32_t>(probe)) & (TILES - 1));
+        Tile &tile = tiles[slot];
+        if (tile.used && tile.x == x && tile.y == y) {
+            return slot;
+        }
+        if (oldest < 0 || !tile.used || (tiles[oldest].used && tile.drawn < tiles[oldest].drawn)) {
+            oldest = slot;
+        }
+    }
+    Tile &tile = tiles[oldest];
+    tile.used = true;
+    tile.x = x;
+    tile.y = y;
+    tile.left = -1;
+    return oldest;
+}
+
+/* x divided by TILE, rounded down. */
+int tileOf(int x)
+{
+    return x >= 0 ? x / TILE : -((-x + TILE - 1) / TILE);
+}
+
 /* A colour's brightness, 0-255 a component. */
 int brightness(int red, int green, int blue)
 {
@@ -249,9 +324,29 @@ void drawUpscaled(bool silencer)
      * went). */
     const u8 *shownScreen = screenSvgaMemory();
     const ViewportPixels screen = drawViewport->pixels();
+    /* The world's: the frame's pixels shown, the sides' and the video
+     * memory's in their middle, read once. */
+    if (!silencer) {
+        if (sides != nullptr && sidesWidth == frameWidth && sidesHeight == frameHeight) {
+            std::memcpy(frameShown, sides, static_cast<std::size_t>(frameWidth) * frameHeight);
+        } else {
+            std::fill_n(frameShown, static_cast<std::size_t>(frameWidth) * frameHeight, static_cast<u8>(0));
+        }
+        for (int y = 0; y < SCREEN_HEIGHT && y + frameTop < frameHeight; y++) {
+            const u8 *from = shownScreen != nullptr ? shownScreen + (y * SCREEN_WIDTH)
+                                                    : screen.pixels + screen.rows[y];
+            std::memcpy(frameShown + (static_cast<std::size_t>(y + frameTop) * frameWidth) + frameLeft, from,
+                        SCREEN_WIDTH);
+        }
+    }
     /* What the frame shows at its column and row: the screen's pixel or
      * the sides'; -1 for none. */
     const auto shown = [&](int column, int row) -> int {
+        if (!silencer) {
+            return column >= 0 && row >= 0 && column < frameWidth && row < frameHeight
+                       ? frameShown[(static_cast<std::size_t>(row) * frameWidth) + column]
+                       : -1;
+        }
         const int x = column - frameLeft;
         const int y = row - frameTop;
         if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
@@ -347,12 +442,9 @@ void drawUpscaled(bool silencer)
             }
         }
     }
-    if (count == 0 || boxRight < boxLeft || boxBottom < boxTop) {
+    if (silencer && (count == 0 || boxRight < boxLeft || boxBottom < boxTop)) {
         return;
     }
-    const int pitch = (boxRight - boxLeft + 1) * SCALE;
-    const int rows = (boxBottom - boxTop + 1) * SCALE;
-    std::fill_n(layer, static_cast<std::size_t>(pitch) * rows, 0U);
     /* The palette's fade of each entry (the screen's against the game's, of
      * 256), as the Silencer's colours have it; his colours' entries in
      * those (colours.h), 0 for the others. */
@@ -375,6 +467,10 @@ void drawUpscaled(bool silencer)
     if (silencer) {
         silencerColours(his);
     }
+    /* The items' pixels within clipLeft..clipRight, clipTop..clipBottom of
+     * the frame into out (pitch a row), its top left corner the box's; whether
+     * any. */
+    const auto paint = [&](int clipLeft, int clipTop, int clipRight, int clipBottom, std::uint32_t *out, int pitch) {
     bool any = false;
     for (int d = 0; d < count; d++) {
         const Drawn &item = drawn[d];
@@ -389,7 +485,8 @@ void drawUpscaled(bool silencer)
          * upscaled pixels. */
         for (s32 r = 0; r < height; r++) {
             const int frameRow = item.top + r;
-            if (frameRow < boxTop || frameRow > boxBottom) {
+            if (frameRow < clipTop || frameRow > clipBottom || item.left > clipRight ||
+                item.left + width - 1 < clipLeft) {
                 continue;
             }
             const u8 *rowEntry = frame + 0x14 + (4 * r);
@@ -410,7 +507,7 @@ void drawUpscaled(bool silencer)
                 p += fill ? 1 : length;
                 for (s32 i = c; i < std::min(c + length, width); i++) {
                     const int frameColumn = item.mirrored ? item.left + (width - 1 - i) : item.left + i;
-                    if (frameColumn < boxLeft || frameColumn > boxRight) {
+                    if (frameColumn < clipLeft || frameColumn > clipRight) {
                         continue;
                     }
                     const u8 colour = fill ? *colours : colours[i - c];
@@ -456,9 +553,9 @@ void drawUpscaled(bool silencer)
                                             << (24 - (8 * k));
                                 }
                             }
-                            const int lx = ((frameColumn - boxLeft) * SCALE) + dx;
-                            const int ly = ((frameRow - boxTop) * SCALE) + dy;
-                            layer[(static_cast<std::size_t>(ly) * pitch) + lx] = made;
+                            const int lx = ((frameColumn - clipLeft) * SCALE) + dx;
+                            const int ly = ((frameRow - clipTop) * SCALE) + dy;
+                            out[(static_cast<std::size_t>(ly) * pitch) + lx] = made;
                             any = true;
                         }
                     }
@@ -467,10 +564,100 @@ void drawUpscaled(bool silencer)
             }
         }
     }
-    if (!any) {
+    return any;
+    };
+    if (silencer) {
+        const int pitch = (boxRight - boxLeft + 1) * SCALE;
+        const int rows = (boxBottom - boxTop + 1) * SCALE;
+        std::fill_n(layer, static_cast<std::size_t>(pitch) * rows, 0U);
+        if (paint(boxLeft, boxTop, boxRight, boxBottom, layer, pitch)) {
+            overlayPictureAs(layer, pitch, rows, static_cast<float>(boxLeft - frameLeft),
+                             static_cast<float>(boxTop - frameTop), static_cast<float>(boxRight - boxLeft + 1),
+                             static_cast<float>(boxBottom - boxTop + 1), OverlayBlend::BLEND, false);
+        }
         return;
     }
-    overlayPictureAs(layer, pitch, rows, static_cast<float>(boxLeft - frameLeft), static_cast<float>(boxTop - frameTop),
-                     static_cast<float>(boxRight - boxLeft + 1), static_cast<float>(boxBottom - boxTop + 1),
-                     OverlayBlend::BLEND, false);
+    /* The world's tiles: all made again for another map or frame. */
+    if (tilesMap != currentMap || tilesWidth != frameWidth || tilesHeight != frameHeight) {
+        for (Tile &tile : tiles) {
+            tile.used = false;
+        }
+        tilesMap = currentMap;
+        tilesWidth = frameWidth;
+        tilesHeight = frameHeight;
+    }
+    tileFrames++;
+    for (int entry = 0; entry < 256; entry++) {
+        if (fadeSeen[entry][0] != fade[entry][0] || fadeSeen[entry][1] != fade[entry][1] ||
+            fadeSeen[entry][2] != fade[entry][2]) {
+            fadeSeen[entry][0] = fade[entry][0];
+            fadeSeen[entry][1] = fade[entry][1];
+            fadeSeen[entry][2] = fade[entry][2];
+            fadeChanged[entry] = tileFrames;
+        }
+    }
+    const int firstX = tileOf(scrollX - frameLeft);
+    const int lastX = tileOf(frameWidth - 1 - frameLeft + scrollX);
+    const int firstY = tileOf(scrollY - frameTop);
+    const int lastY = tileOf(frameHeight - 1 - frameTop + scrollY);
+    for (int ty = firstY; ty <= lastY; ty++) {
+        for (int tx = firstX; tx <= lastX; tx++) {
+            /* The tile's top left corner on the frame, and its part shown. */
+            const int x = (tx * TILE) - scrollX + frameLeft;
+            const int y = (ty * TILE) - scrollY + frameTop;
+            const int left = std::max(0, x);
+            const int top = std::max(0, y);
+            const int right = std::min(frameWidth - 1, x + TILE - 1);
+            const int bottom = std::min(frameHeight - 1, y + TILE - 1);
+            if (right < left || bottom < top) {
+                continue;
+            }
+            const int slot = tileSlot(tx, ty);
+            Tile &tile = tiles[slot];
+            const int across = right - left + 1;
+            bool same = tile.left == left - x && tile.top == top - y && tile.right == right - x &&
+                        tile.bottom == bottom - y && tileFrames - tile.drawn < 60;
+            for (int word = 0; same && word < 4; word++) {
+                for (std::uint64_t bits = tile.entries[word]; same && bits != 0U; bits &= bits - 1) {
+                    same = fadeChanged[(word * 64) + __builtin_ctzll(bits)] <= tile.made;
+                }
+            }
+            for (int row = top; same && row <= bottom; row++) {
+                same = std::memcmp(frameShown + (static_cast<std::size_t>(row) * frameWidth) + left,
+                                   tile.seen + ((row - y) * TILE) + (left - x), static_cast<std::size_t>(across)) == 0;
+            }
+            if (!same) {
+                for (int row = top; row <= bottom; row++) {
+                    std::memcpy(tile.seen + ((row - y) * TILE) + (left - x),
+                                frameShown + (static_cast<std::size_t>(row) * frameWidth) + left,
+                                static_cast<std::size_t>(across));
+                }
+                tile.left = left - x;
+                tile.top = top - y;
+                tile.right = right - x;
+                tile.bottom = bottom - y;
+                tile.made = tileFrames;
+                std::fill(std::begin(tile.entries), std::end(tile.entries), 0U);
+                for (int row = top; row <= bottom; row++) {
+                    for (int column = left; column <= right; column++) {
+                        const u8 entry = tile.seen[((row - y) * TILE) + (column - x)];
+                        tile.entries[entry >> 6] |= std::uint64_t{1} << (entry & 63);
+                    }
+                }
+                std::fill(std::begin(tilePixels), std::end(tilePixels), 0U);
+                tile.empty = !paint(left, top, right, bottom,
+                                    tilePixels + ((static_cast<std::size_t>(top - y) * SCALE) * (TILE * SCALE)) +
+                                        ((left - x) * SCALE),
+                                    TILE * SCALE);
+                tile.version = ++tileVersion;
+            }
+            tile.drawn = tileFrames;
+            if (!tile.empty) {
+                overlayPictureKept(TILE_KEYS + static_cast<std::uint32_t>(slot), tile.version,
+                                   same ? nullptr : tilePixels, TILE * SCALE, TILE * SCALE,
+                                   static_cast<float>(x - frameLeft), static_cast<float>(y - frameTop),
+                                   static_cast<float>(TILE), static_cast<float>(TILE), OverlayBlend::BLEND, false);
+            }
+        }
+    }
 }

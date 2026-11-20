@@ -592,7 +592,21 @@ const std::uint8_t *fileHeld(const char *path, std::size_t *size)
     const std::string key = portHostPath(path).string();
     auto found = held.find(key);
     if (found == held.end()) {
-        std::vector<std::uint8_t> bytes = fileContents(path);
+        /* Read whole at once: a hundred megabytes. */
+        std::FILE *file = portHostFopen(portHostPath(path), "rb");
+        if (file == nullptr) {
+            *size = 0;
+            return nullptr;
+        }
+        std::vector<std::uint8_t> bytes;
+        if (std::fseek(file, 0, SEEK_END) == 0) {
+            const long length = std::ftell(file);
+            if (length > 0 && std::fseek(file, 0, SEEK_SET) == 0) {
+                bytes.resize(static_cast<std::size_t>(length));
+                bytes.resize(std::fread(bytes.data(), 1, bytes.size(), file));
+            }
+        }
+        std::fclose(file);
         if (bytes.empty()) {
             *size = 0;
             return nullptr;

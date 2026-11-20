@@ -6,11 +6,23 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 namespace {
 void (*drawAction)() = nullptr;
 /* The overlay being gathered, while the game's function runs. */
 Overlay *gathering = nullptr;
+/* The kept pictures (overlayPictureKept): each key's version, pixels and
+ * the gathering it was last drawn in; forgotten after FORGET gatherings
+ * without it. The game thread's. */
+struct KeptPicture {
+    std::uint32_t version;
+    std::shared_ptr<const std::vector<std::uint32_t>> pixels;
+    std::uint64_t used;
+};
+std::unordered_map<std::uint32_t, KeptPicture> keptPictures;
+std::uint64_t gatherings = 0;
+const std::uint64_t FORGET = 120;
 
 void add(const OverlayShape &shape)
 {
@@ -82,11 +94,45 @@ void overlayPictureAs(const std::uint32_t *pixels, int width, int height, float 
          .sharp = sharp});
 }
 
+void overlayPictureKept(std::uint32_t key, std::uint32_t version, const std::uint32_t *pixels, int width, int height,
+                        float x, float y, float w, float h, OverlayBlend blend, bool sharp)
+{
+    const SystemSide systemSide;
+    if (gathering == nullptr || width <= 0 || height <= 0) {
+        return;
+    }
+    const std::size_t count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    auto found = keptPictures.find(key);
+    if (found == keptPictures.end() || found->second.version != version || found->second.pixels->size() != count) {
+        if (pixels == nullptr) {
+            return;
+        }
+        auto copy = std::make_shared<const std::vector<std::uint32_t>>(pixels, pixels + count);
+        found = keptPictures.insert_or_assign(key, KeptPicture{version, std::move(copy), gatherings}).first;
+    }
+    found->second.used = gatherings;
+    add({.kind = OverlayShape::PICTURE,
+         .x = {x, w, 0},
+         .y = {y, h, 0},
+         .colour = 0xffffffff,
+         .w = width,
+         .h = height,
+         .blend = static_cast<u8>(blend),
+         .sharp = sharp,
+         .kept = found->second.pixels,
+         .key = key,
+         .version = version});
+}
+
 void gatherOverlay(Overlay &overlay)
 {
     overlay.clear();
     if (drawAction == nullptr) {
         return;
+    }
+    gatherings++;
+    if ((gatherings % FORGET) == 0) {
+        std::erase_if(keptPictures, [](const auto &entry) { return gatherings - entry.second.used > FORGET; });
     }
     gathering = &overlay;
     {
@@ -203,7 +249,8 @@ void paintOverlay(const Overlay &overlay, u8 *rgb, int width, int height, int le
                     }
                     const int u = std::min(shape.w - 1, static_cast<int>((px - x0) * shape.w / shape.x[1]));
                     const int v = std::min(shape.h - 1, static_cast<int>((py - y0) * shape.h / shape.y[1]));
-                    colour = overlay.pixels[shape.first + (static_cast<std::size_t>(v) * shape.w) + u];
+                    const std::size_t at = (static_cast<std::size_t>(v) * shape.w) + u;
+                    colour = shape.kept ? (*shape.kept)[at] : overlay.pixels[shape.first + at];
                     coverage = 1;
                     if (shape.blend == static_cast<u8>(OverlayBlend::MULTIPLY)) {
                         for (int k = 0; k < 3; k++) {

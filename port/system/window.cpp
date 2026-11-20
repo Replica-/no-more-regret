@@ -105,6 +105,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -1118,8 +1119,56 @@ SDL_FColor overlayColour(std::uint32_t colour)
             static_cast<float>(colour >> 8 & 0xff) / 255.0F, static_cast<float>(colour & 0xff) / 255.0F};
 }
 
+/* The window thread's textures of the kept pictures (overlayPictureKept):
+ * each key's version and the draw it was last used in; uploaded again
+ * only when the version changes, destroyed when unused for a while. */
+struct KeptTexture {
+    std::uint32_t version;
+    SDL_Texture *texture;
+    std::uint64_t used;
+};
+std::unordered_map<std::uint32_t, KeptTexture> keptTextures;
+std::uint64_t overlayDraws = 0;
+
+SDL_Texture *keptTexture(const OverlayShape &shape)
+{
+    auto found = keptTextures.find(shape.key);
+    if (found != keptTextures.end()) {
+        float width = 0;
+        float height = 0;
+        if (found->second.version != shape.version || !SDL_GetTextureSize(found->second.texture, &width, &height) ||
+            width != static_cast<float>(shape.w) || height != static_cast<float>(shape.h)) {
+            SDL_DestroyTexture(found->second.texture);
+            keptTextures.erase(found);
+            found = keptTextures.end();
+        }
+    }
+    if (found == keptTextures.end()) {
+        SDL_Texture *made =
+            SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, shape.w, shape.h);
+        if (made == nullptr) {
+            return nullptr;
+        }
+        SDL_UpdateTexture(made, nullptr, shape.kept->data(), shape.w * static_cast<int>(sizeof(std::uint32_t)));
+        found = keptTextures.insert_or_assign(shape.key, KeptTexture{shape.version, made, overlayDraws}).first;
+    }
+    found->second.used = overlayDraws;
+    return found->second.texture;
+}
+
 void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenView &view)
 {
+    overlayDraws++;
+    if ((overlayDraws % 240) == 0) {
+        for (auto entry = keptTextures.begin(); entry != keptTextures.end();) {
+            if (overlayDraws - entry->second.used > 240) {
+                SDL_DestroyTexture(entry->second.texture);
+                entry = keptTextures.erase(entry);
+            } else {
+                ++entry;
+            }
+        }
+    }
     if (overlay.shapes.empty()) {
         return;
     }
@@ -1205,13 +1254,17 @@ void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenVie
             break;
         case OverlayShape::PICTURE: {
             flush();
+            const bool kept = static_cast<bool>(shape.kept);
             SDL_Texture *picture =
-                SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, shape.w, shape.h);
+                kept ? keptTexture(shape)
+                     : SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, shape.w, shape.h);
             if (picture == nullptr) {
                 break;
             }
-            SDL_UpdateTexture(picture, nullptr, &overlay.pixels[shape.first],
-                              shape.w * static_cast<int>(sizeof(std::uint32_t)));
+            if (!kept) {
+                SDL_UpdateTexture(picture, nullptr, &overlay.pixels[shape.first],
+                                  shape.w * static_cast<int>(sizeof(std::uint32_t)));
+            }
             SDL_SetTextureBlendMode(picture, shape.blend == static_cast<u8>(OverlayBlend::MULTIPLY) ? SDL_BLENDMODE_MOD
                                              : shape.blend == static_cast<u8>(OverlayBlend::ADD) ? SDL_BLENDMODE_ADD
                                                                                                  : SDL_BLENDMODE_BLEND);
@@ -1219,7 +1272,9 @@ void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenVie
             const SDL_FPoint a = at(shape.x[0], shape.y[0]);
             const SDL_FRect box{a.x, a.y, shape.x[1] * scale, shape.y[1] * scale};
             SDL_RenderTexture(renderer, picture, nullptr, &box);
-            SDL_DestroyTexture(picture);
+            if (!kept) {
+                SDL_DestroyTexture(picture);
+            }
             break;
         }
         }

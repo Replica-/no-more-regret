@@ -37,4 +37,11 @@ void overlayPicture(const std::uint32_t *pixels, int width, int height, float x,
 enum class OverlayBlend : std::uint8_t { BLEND, MULTIPLY, ADD };
 void overlayPictureAs(const std::uint32_t *pixels, int width, int height, float x, float y, float w, float h,
                       OverlayBlend blend, bool sharp);
+/* overlayPictureAs's picture kept by the system layer under key: its
+ * pixels read only when version is not the key's last (else pixels may be
+ * nullptr), and the window's copy of it kept too, so that a picture the
+ * same frame after frame costs no copy and no upload. A key not drawn for a
+ * while is forgotten. */
+void overlayPictureKept(std::uint32_t key, std::uint32_t version, const std::uint32_t *pixels, int width, int height,
+                        float x, float y, float w, float h, OverlayBlend blend, bool sharp);
 #endif
