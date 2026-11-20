@@ -13,12 +13,17 @@ its own: those of static/imported.dat (import_anims.py) and turns.dat
 upscaled.dat: "UPS2", the scale (u16) and the count of frames (u32); each
 frame's shape, frame, width and height upscaled (u16 each) and its first
 pixel's place among them (u32), in the order of shape and frame; then the
-pixels, 0xRRGGBBAA (u32 each, little-endian). The game holds it outside its
-arena, read whole once.
+pixels, 0xRRGGBBAA (u32 each, little-endian). The game maps it outside its
+arena (files.h's fileHeld).
 
-usage: upscale.py GAME_DIR ESRGAN_EXE SHAPE[,SHAPE...] [--model NAME]
+The frames go to the upscaler in batches of one canvas size (BATCH at
+most), whose files go once used, and the file is written as they come: the
+whole game is some 30000 frames and a gigabyte.
+
+usage: upscale.py GAME_DIR ESRGAN_EXE SHAPE[,SHAPE...]|all [--model NAME]
        [--work DIR]
-SHAPE is a shape's number in hex."""
+SHAPE is a shape's number in hex; all, every shape but the effects' (the
+explosions, flashes and fires the hardware scene draws itself)."""
 import argparse
 import shutil
 import struct
@@ -37,6 +42,18 @@ SCALE = 2
 # upscaled alone, else doubled as it is.
 CANVAS = (256, 128)
 UNLIKE = 30
+BATCH = 1000
+
+
+def effect(shape):
+    """The effects' shapes (common/src/modern/effects.cpp's isEffect)."""
+    return 0x31c <= shape <= 0x327 or 0x438 <= shape <= 0x43c or shape in (0x4cb, 0x50a, 0x518, 0x44a)
+
+
+def canvas_of(size):
+    """The canvas a frame of size is upscaled on: CANVAS, or larger in
+    steps of 64."""
+    return (max(CANVAS[0], -(-size[0] // 64) * 64), max(CANVAS[1], -(-size[1] // 64) * 64))
 
 
 def bled(image, size):
@@ -92,6 +109,8 @@ def shape_frames(path, shape):
         offset, size = struct.unpack('<II', f.read(8))
         f.seek(offset)
         data = f.read(size)
+    if len(data) < 6:
+        return []
     count = struct.unpack_from('<H', data, 4)[0]
     frames = []
     for i in range(count):
@@ -185,56 +204,93 @@ def main():
     padded = work / 'padded'
     upscaled = work / 'out'
     alone = work / 'alone'
-    for folder in (source, padded, upscaled, alone):
-        shutil.rmtree(folder, ignore_errors=True)
-        folder.mkdir(parents=True)
-    names = []
-    for shape in (int(s, 16) for s in args.shapes.split(',')):
+    alone.mkdir(parents=True, exist_ok=True)
+    if args.shapes == 'all':
+        count = struct.unpack_from('<I', flx.read_bytes()[:0x58], 0x54)[0]
+        shapes = [shape for shape in range(count) if not effect(shape)]
+    else:
+        shapes = [int(text, 16) for text in args.shapes.split(',')]
+    # Every frame first: its shape, number, picture and canvas.
+    frames_all = []
+    for shape in shapes:
         frames = dict(enumerate(shape_frames(flx, shape)))
         frames.update(added_frames(args.game, shape))
         for number, frame in sorted(frames.items()):
             if len(frame) < 8 + 0x14 or min(struct.unpack_from('<ii', frame, 12)) <= 0:
                 continue
-            name = f's{shape:04x}_f{number:04d}.png'
-            image = frame_image(frame, palette)
-            image.save(source / name)
-            bled(image, (max(CANVAS[0], image.size[0]), max(CANVAS[1], image.size[1]))).save(padded / name)
-            names.append((shape, number, name))
+            width, height = struct.unpack_from('<ii', frame, 12)
+            if width > 2048 or height > 2048:
+                continue
+            frames_all.append((shape, number, frame, canvas_of((width, height))))
+    # The table in the order of shape and frame; the pixels as they come.
+    order = sorted(range(len(frames_all)), key=lambda i: (frames_all[i][3], i))
+    entries = [None] * len(frames_all)
+    target = static_file(args.game, 'anim.dat').with_name('UPSCALED.DAT')
+    partial = target.with_name('UPSCALED.NEW')
+    header_size = 4 + 6 + (12 * len(frames_all))
+    doubled = 0
+    written = 0
 
     def esrgan(folder, out):
         subprocess.run([args.esrgan, '-i', str(folder), '-o', str(out), '-n', args.model, '-s', '4', '-f', 'png'],
                        check=True, cwd=Path(args.esrgan).parent, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    esrgan(padded, upscaled)
-    doubled = 0
-    header = bytearray(b'UPS2')
-    header += struct.pack('<HI', SCALE, len(names))
-    pixels = bytearray()
-    for shape, number, name in names:
-        original = Image.open(source / name).convert('RGBA')
-        width, height = original.size[0] * SCALE, original.size[1] * SCALE
-        four = (original.size[0] * 4, original.size[1] * 4)
-        big = Image.open(upscaled / name).convert('RGBA').crop((0, 0) + four)
-        if unlike(original, big) > UNLIKE:
-            one = alone / 'one'
-            shutil.rmtree(one, ignore_errors=True)
-            one.mkdir()
-            bled(original, original.size).save(one / name)
-            esrgan(one, alone)
-            big = Image.open(alone / name).convert('RGBA')
-            if unlike(original, big) > UNLIKE:
-                big = original.resize(four, Image.NEAREST)
-                doubled += 1
-        big = big.resize((width, height), Image.LANCZOS)
-        # Kept where the frame has pixels, opaque there.
-        mask = original.getchannel('A').resize((width, height), Image.NEAREST)
-        big.putalpha(mask)
-        header += struct.pack('<HHHHI', shape, number, width, height, len(pixels) // 4)
-        # Each pixel's bytes reversed: 0xRRGGBBAA little-endian.
-        pixels += numpy.asarray(big)[..., ::-1].tobytes()
-    target = static_file(args.game, 'anim.dat').with_name('UPSCALED.DAT')
-    target.write_bytes(bytes(header) + bytes(pixels))
-    print(f'upscale: {target}: {len(names)} frames at {SCALE}x, {doubled} only doubled')
+    with open(partial, 'wb') as out:
+        out.write(bytes(header_size))
+        at = 0
+        while at < len(order):
+            # A batch: of one canvas size, BATCH at most.
+            size = frames_all[order[at]][3]
+            batch = []
+            while at < len(order) and len(batch) < BATCH and frames_all[order[at]][3] == size:
+                batch.append(order[at])
+                at += 1
+            for folder in (source, padded, upscaled):
+                shutil.rmtree(folder, ignore_errors=True)
+                folder.mkdir(parents=True)
+            for index in batch:
+                shape, number, frame, canvas = frames_all[index]
+                name = f's{shape:04x}_f{number:04d}.png'
+                image = frame_image(frame, palette)
+                image.save(source / name)
+                bled(image, canvas).save(padded / name)
+            esrgan(padded, upscaled)
+            for index in batch:
+                shape, number, frame, canvas = frames_all[index]
+                name = f's{shape:04x}_f{number:04d}.png'
+                original = Image.open(source / name).convert('RGBA')
+                width, height = original.size[0] * SCALE, original.size[1] * SCALE
+                four = (original.size[0] * 4, original.size[1] * 4)
+                big = Image.open(upscaled / name).convert('RGBA').crop((0, 0) + four)
+                if unlike(original, big) > UNLIKE:
+                    one = alone / 'one'
+                    shutil.rmtree(one, ignore_errors=True)
+                    one.mkdir(parents=True)
+                    bled(original, original.size).save(one / name)
+                    esrgan(one, alone)
+                    big = Image.open(alone / name).convert('RGBA')
+                    if unlike(original, big) > UNLIKE:
+                        big = original.resize(four, Image.NEAREST)
+                        doubled += 1
+                big = big.resize((width, height), Image.LANCZOS)
+                # Kept where the frame has pixels, opaque there.
+                mask = original.getchannel('A').resize((width, height), Image.NEAREST)
+                big.putalpha(mask)
+                entries[index] = (shape, number, width, height, written)
+                # Each pixel's bytes reversed: 0xRRGGBBAA little-endian.
+                out.write(numpy.asarray(big)[..., ::-1].tobytes())
+                written += width * height
+            print(f'upscale: {at} of {len(order)} frames', flush=True)
+        out.seek(0)
+        header = bytearray(b'UPS2')
+        header += struct.pack('<HI', SCALE, len(frames_all))
+        for shape, number, width, height, first in sorted(entries):
+            header += struct.pack('<HHHHI', shape, number, width, height, first)
+        out.write(header)
+    for folder in (source, padded, upscaled, alone):
+        shutil.rmtree(folder, ignore_errors=True)
+    partial.replace(target)
+    print(f'upscale: {target}: {len(frames_all)} frames at {SCALE}x, {doubled} only doubled')
 
 
 if __name__ == '__main__':

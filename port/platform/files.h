@@ -74,11 +74,12 @@ int fileStreamClose(std::FILE *stream);
  * in the host's heap, so that a look at a file (the check of a saved game
  * before its load) takes nothing of the arena's (system/gamememory.h). */
 std::vector<std::uint8_t> fileContents(const char *path);
-/* A file's bytes held for the rest of the run: read whole once on the
- * system's side, in the host's heap (outside the arena: not the game's
- * state, which a snapshot or a rewind copies), and the same bytes at each
- * call; nullptr when it cannot be read. For read-only data too large for
- * the arena (the upscaled textures). */
+/* A file's bytes held for the rest of the run: mapped by the system (only
+ * what is read paged in), else read whole, on the system's side outside the
+ * arena (not the game's state, which a snapshot or a rewind copies), and
+ * the same bytes at each call; nullptr when it cannot be read. For
+ * read-only data too large for the arena (the upscaled textures, a
+ * gigabyte for the whole game). */
 const std::uint8_t *fileHeld(const char *path, std::size_t *size);
 
 /* A search of a directory, with the widths of Borland's ffblk (the game

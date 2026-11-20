@@ -588,33 +588,67 @@ std::vector<std::uint8_t> fileContents(const char *path)
 const std::uint8_t *fileHeld(const char *path, std::size_t *size)
 {
     const SystemSide systemSide;
-    static std::map<std::string, std::vector<std::uint8_t>> held;
-    const std::string key = portHostPath(path).string();
+    /* Each file's bytes and size: mapped (the system pages in only what
+     * is read: a gigabyte of upscaled frames costs what is drawn), else
+     * read whole. Kept for the run. */
+    struct Held {
+        const std::uint8_t *bytes;
+        std::size_t size;
+        std::vector<std::uint8_t> read;
+    };
+    static std::map<std::string, Held> held;
+    const fs::path host = portHostPath(path);
+    const std::string key = host.string();
     auto found = held.find(key);
     if (found == held.end()) {
-        /* Read whole at once: a hundred megabytes. */
-        std::FILE *file = portHostFopen(portHostPath(path), "rb");
-        if (file == nullptr) {
-            *size = 0;
-            return nullptr;
-        }
-        std::vector<std::uint8_t> bytes;
-        if (std::fseek(file, 0, SEEK_END) == 0) {
-            const long length = std::ftell(file);
-            if (length > 0 && std::fseek(file, 0, SEEK_SET) == 0) {
-                bytes.resize(static_cast<std::size_t>(length));
-                bytes.resize(std::fread(bytes.data(), 1, bytes.size(), file));
+        Held now{nullptr, 0, {}};
+#ifdef _WIN32
+        HANDLE file = ::CreateFileW(host.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) {
+            LARGE_INTEGER length{};
+            if (::GetFileSizeEx(file, &length) != 0 && length.QuadPart > 0) {
+                HANDLE mapping = ::CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+                if (mapping != nullptr) {
+                    const void *view = ::MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+                    if (view != nullptr) {
+                        now.bytes = static_cast<const std::uint8_t *>(view);
+                        now.size = static_cast<std::size_t>(length.QuadPart);
+                    }
+                    /* The view keeps the mapping. */
+                    ::CloseHandle(mapping);
+                }
             }
+            ::CloseHandle(file);
         }
-        std::fclose(file);
-        if (bytes.empty()) {
+#endif
+        if (now.bytes == nullptr) {
+            std::FILE *stream = portHostFopen(host, "rb");
+            if (stream != nullptr) {
+                if (std::fseek(stream, 0, SEEK_END) == 0) {
+                    const long length = std::ftell(stream);
+                    if (length > 0 && std::fseek(stream, 0, SEEK_SET) == 0) {
+                        now.read.resize(static_cast<std::size_t>(length));
+                        now.read.resize(std::fread(now.read.data(), 1, now.read.size(), stream));
+                    }
+                }
+                std::fclose(stream);
+            }
+            now.bytes = now.read.empty() ? nullptr : now.read.data();
+            now.size = now.read.size();
+        }
+        if (now.bytes == nullptr) {
             *size = 0;
             return nullptr;
         }
-        found = held.emplace(key, std::move(bytes)).first;
+        found = held.emplace(key, std::move(now)).first;
+        /* Moved: the read bytes are the vector's own still. */
+        if (!found->second.read.empty()) {
+            found->second.bytes = found->second.read.data();
+        }
     }
-    *size = found->second.size();
-    return found->second.data();
+    *size = found->second.size;
+    return found->second.bytes;
 }
 
 std::FILE *portHostFopen(const fs::path &path, const char *mode)
