@@ -487,13 +487,35 @@ void drawUpscaled(bool silencer)
     /* Each entry unfaded (the screen's palette the game's, as mostly):
      * its upscaled pixels as they are. */
     bool unfaded[256];
+    /* An entry the game shows in another colour than the one its upscaled
+     * pixels were made in, faded (its colours turned round, the floor's
+     * marks' and the lights': the game changes its palette itself): those
+     * are not drawn; the game's show. The colours they were made in are
+     * gamepal.pal's (upscale.py's). */
+    bool other[256];
+    std::size_t artSize = 0;
+    const u8 *art = fileHeld(makePath(nullptr, staticDirectory, "gamepal.pal", nullptr), &artSize);
+    if (artSize < 256 * 3) {
+        art = nullptr;
+    }
     for (int entry = 0; entry < 256; entry++) {
-        const u8 base[3] = {palette[entry].red, palette[entry].green, palette[entry].blue};
+        const u8 base[3] = {art != nullptr ? art[entry * 3] : palette[entry].red,
+                            art != nullptr ? art[(entry * 3) + 1] : palette[entry].green,
+                            art != nullptr ? art[(entry * 3) + 2] : palette[entry].blue};
         unfaded[entry] = true;
+        int least = 1 << 20;
+        int most = 0;
         for (int k = 0; k < 3; k++) {
-            fade[entry][k] = base[k] == 0U ? 256 : std::min(256, ((now[(entry * 3) + k] & 0x3f) * 256) / base[k]);
+            const int shownPart = now[(entry * 3) + k] & 0x3f;
+            const int ratio = base[k] == 0U ? (shownPart == 0 ? 256 : 1 << 16) : (shownPart * 256) / base[k];
+            fade[entry][k] = std::min(256, ratio);
             unfaded[entry] = unfaded[entry] && fade[entry][k] == 256;
+            if (base[k] >= 4U || shownPart >= 4) {
+                least = std::min(least, ratio);
+                most = std::max(most, ratio);
+            }
         }
+        other[entry] = !unfaded[entry] && (most > 264 || most - least > 24);
     }
     std::uint32_t his[256] = {};
     if (silencer) {
@@ -545,7 +567,8 @@ void drawUpscaled(bool silencer)
                     const u8 colour = fill ? *colours : colours[i - c];
                     /* His pixels: the screen shows them in his colours'
                      * entries (colours.h). */
-                    if (shown(frameColumn, frameRow) != (silencer ? silencerShownEntry(colour) : colour)) {
+                    if (other[colour] ||
+                        shown(frameColumn, frameRow) != (silencer ? silencerShownEntry(colour) : colour)) {
                         continue;
                     }
                     /* His colours' entries: the chosen colour (faded), as
