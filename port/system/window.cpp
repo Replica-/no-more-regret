@@ -1133,11 +1133,17 @@ std::uint64_t overlayDraws = 0;
 SDL_Texture *keptTexture(const OverlayShape &shape)
 {
     auto found = keptTextures.find(shape.key);
-    if (found != keptTextures.end()) {
+    if (found != keptTextures.end() && found->second.version != shape.version) {
+        /* A new version the same size: its pixels into the texture there
+         * is (making one each time costs the driver far more). */
         float width = 0;
         float height = 0;
-        if (found->second.version != shape.version || !SDL_GetTextureSize(found->second.texture, &width, &height) ||
-            width != static_cast<float>(shape.w) || height != static_cast<float>(shape.h)) {
+        if (SDL_GetTextureSize(found->second.texture, &width, &height) && width == static_cast<float>(shape.w) &&
+            height == static_cast<float>(shape.h)) {
+            SDL_UpdateTexture(found->second.texture, nullptr, shape.kept->data(),
+                              shape.w * static_cast<int>(sizeof(std::uint32_t)));
+            found->second.version = shape.version;
+        } else {
             SDL_DestroyTexture(found->second.texture);
             keptTextures.erase(found);
             found = keptTextures.end();

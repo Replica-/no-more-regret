@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "shape.h"
 #include "shaphand.h"
+#include "status.h"
 #include "turns.h"
 #include "type.h"
 #include "viewport.h"
@@ -129,7 +130,7 @@ struct Drawn {
     int top;
     bool mirrored;
 };
-const int MOST_DRAWN = 512;
+const int MOST_DRAWN = 2048;
 Drawn drawn[MOST_DRAWN];
 
 /* The Silencer as last drawn (upscaledDrawn). */
@@ -348,44 +349,62 @@ void drawUpscaled(bool silencer)
      * went). */
     const u8 *shownScreen = screenSvgaMemory();
     const ViewportPixels screen = drawViewport->pixels();
-    /* The world's: the frame's pixels shown, the sides' and the video
-     * memory's in their middle, read once. */
-    if (!silencer) {
+    /* The frame's pixels shown, as the window shows them (video.cpp's
+     * viewWideScreen): the sides', the video memory's in their middle, and
+     * the status display's parts moved to the frame's bottom (widesides.h's
+     * wideStatusDown), the sides' where they were; read once. None is
+     * shown over the parts moved: the status display is not the world's. */
+    /* The world's pass makes it; the Silencer's, just after, takes it. */
+    static bool shownMade = false;
+    const bool remake = !silencer || !shownMade;
+    shownMade = !silencer;
+    if (remake) {
         if (sides != nullptr && sidesWidth == frameWidth && sidesHeight == frameHeight) {
             std::memcpy(frameShown, sides, static_cast<std::size_t>(frameWidth) * frameHeight);
         } else {
             std::fill_n(frameShown, static_cast<std::size_t>(frameWidth) * frameHeight, static_cast<u8>(0));
         }
         for (int y = 0; y < SCREEN_HEIGHT && y + frameTop < frameHeight; y++) {
-            const u8 *from = shownScreen != nullptr ? shownScreen + (y * SCREEN_WIDTH)
-                                                    : screen.pixels + screen.rows[y];
+            const u8 *from =
+                shownScreen != nullptr ? shownScreen + (y * SCREEN_WIDTH) : screen.pixels + screen.rows[y];
             std::memcpy(frameShown + (static_cast<std::size_t>(y + frameTop) * frameWidth) + frameLeft, from,
                         SCREEN_WIDTH);
         }
     }
-    /* What the frame shows at its column and row: the screen's pixel or
-     * the sides'; -1 for none. */
+    const int down = wideStatusDown();
+    Rect moved[STATUS_PARTS];
+    int movedCount = 0;
+    if (down != 0 && sides != nullptr && sidesWidth == frameWidth && sidesHeight == frameHeight) {
+        for (const StatusPart &part : statusParts) {
+            const int left = std::max<int>(part.area.left, 0);
+            const int right = std::min<int>(part.area.right, SCREEN_WIDTH - 1);
+            for (int y = std::max<int>(part.area.top, 0);
+                 remake && y <= std::min<int>(part.area.bottom, SCREEN_HEIGHT - 1) && left <= right; y++) {
+                const std::size_t at = (static_cast<std::size_t>(y + frameTop) * frameWidth) + frameLeft + left;
+                std::memcpy(frameShown + at, sides + at, static_cast<std::size_t>(right - left + 1));
+            }
+            moved[movedCount++] = Rect(static_cast<i16>(part.area.left + frameLeft),
+                                       static_cast<i16>(part.area.top + down + frameTop),
+                                       static_cast<i16>(part.area.right + frameLeft),
+                                       static_cast<i16>(part.area.bottom + down + frameTop));
+        }
+    }
+    /* What the frame shows at its column and row: -1 for none. */
+    int movedTop = frameHeight;
+    for (int m = 0; m < movedCount; m++) {
+        movedTop = std::min<int>(movedTop, moved[m].top);
+    }
     const auto shown = [&](int column, int row) -> int {
-        if (!silencer) {
-            return column >= 0 && row >= 0 && column < frameWidth && row < frameHeight
-                       ? frameShown[(static_cast<std::size_t>(row) * frameWidth) + column]
-                       : -1;
-        }
-        const int x = column - frameLeft;
-        const int y = row - frameTop;
-        if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
-            if (x < screen.left || x > screen.right || y < screen.top || y > screen.bottom) {
-                return -1;
-            }
-            if (shownScreen != nullptr) {
-                return shownScreen[(y * SCREEN_WIDTH) + x];
-            }
-            return screen.pixels[screen.rows[y] + static_cast<u32>(x)];
-        }
-        if (sides == nullptr || column < 0 || row < 0 || column >= sidesWidth || row >= sidesHeight) {
+        if (column < 0 || row < 0 || column >= frameWidth || row >= frameHeight) {
             return -1;
         }
-        return sides[(static_cast<std::size_t>(row) * sidesWidth) + column];
+        for (int m = 0; row >= movedTop && m < movedCount; m++) {
+            if (column >= moved[m].left && column <= moved[m].right && row >= moved[m].top &&
+                row <= moved[m].bottom) {
+                return -1;
+            }
+        }
+        return frameShown[(static_cast<std::size_t>(row) * frameWidth) + column];
     };
     /* The items on the screen with an upscaled frame, and their box: the
      * Silencer alone, or all but him. */
@@ -457,13 +476,28 @@ void drawUpscaled(bool silencer)
             note(him.id);
         }
     } else {
-        u16 middleX;
-        u16 middleY;
-        screenToMap(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, &middleX, &middleY);
-        const int column = middleX >> CHUNK_SHIFT;
-        const int row = middleY >> CHUNK_SHIFT;
-        for (int c = std::max(0, column - 5); c <= std::min(CHUNKS - 1, column + 5) && count < MOST_DRAWN; c++) {
-            for (int r = std::max(0, row - 5); r <= std::min(CHUNKS - 1, row + 5) && count < MOST_DRAWN; r++) {
+        /* The chunks under the frame: its corners on the map at height 0
+         * (DL_ItemNode::draw's place backwards), the bottom 256 rows lower
+         * (an item stands up from its place, high ones higher), and a chunk
+         * round. */
+        int firstColumn = CHUNKS;
+        int lastColumn = -1;
+        int firstRow = CHUNKS;
+        int lastRow = -1;
+        for (const int cx : {-frameLeft, frameWidth - frameLeft}) {
+            for (const int cy : {-frameTop, frameHeight - frameTop + 256}) {
+                const int across = cx + scrollX;
+                const int deep = cy + scrollY;
+                const int mapX = across + (2 * deep);
+                const int mapY = (2 * deep) - across;
+                firstColumn = std::min(firstColumn, (mapX >> CHUNK_SHIFT) - 1);
+                lastColumn = std::max(lastColumn, (mapX >> CHUNK_SHIFT) + 1);
+                firstRow = std::min(firstRow, (mapY >> CHUNK_SHIFT) - 1);
+                lastRow = std::max(lastRow, (mapY >> CHUNK_SHIFT) + 1);
+            }
+        }
+        for (int c = std::max(0, firstColumn); c <= std::min(CHUNKS - 1, lastColumn) && count < MOST_DRAWN; c++) {
+            for (int r = std::max(0, firstRow); r <= std::min(CHUNKS - 1, lastRow) && count < MOST_DRAWN; r++) {
                 for (u16 item = mapChunks[c][r]; item != 0U && count < MOST_DRAWN; item = itemNext[item]) {
                     if (item < FIRST_ITEM || (itemFlags[item] & (ITEM_CONTAINED | ITEM_INVISIBLE)) != 0 ||
                         Item(item).isSilencer()) {
@@ -535,14 +569,14 @@ void drawUpscaled(bool silencer)
         const s32 width = drawframe::dword(frame + 4);
         const s32 height = drawframe::dword(frame + 8);
         const bool fills = (drawframe::dword(frame) & 1) != 0;
-        /* The frame's runs (drawframe.h); each pixel that still shows, its
-         * upscaled pixels. */
-        for (s32 r = 0; r < height; r++) {
+        if (item.left > clipRight || item.left + width - 1 < clipLeft || item.top > clipBottom ||
+            item.top + height - 1 < clipTop) {
+            continue;
+        }
+        /* The frame's runs (drawframe.h), its rows within the clip; each
+         * pixel that still shows, its upscaled pixels. */
+        for (s32 r = std::max(0, clipTop - item.top); r < std::min(height, clipBottom - item.top + 1); r++) {
             const int frameRow = item.top + r;
-            if (frameRow < clipTop || frameRow > clipBottom || item.left > clipRight ||
-                item.left + width - 1 < clipLeft) {
-                continue;
-            }
             const u8 *rowEntry = frame + 0x14 + (4 * r);
             const u8 *p = rowEntry + static_cast<u32>(drawframe::dword(rowEntry));
             s32 c = 0;
