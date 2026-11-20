@@ -201,6 +201,16 @@ bool isBlast(u16 shape)
     return shape == 0x320 || shape == 0x321 || shape == 0x323 || shape == 0x324 || shape == 0x325;
 }
 
+/* The small blasts (explode.cpp's: a camera's, a crate's): a flash in the
+ * palette's greys, white to smoke, drawn as a fire's colours too; their
+ * own oranges and reds (the embers) as they are. Hot for their first
+ * frames, then cooling (of their 40). */
+bool isSmallBlast(u16 shape)
+{
+    return shape == 0x31c || shape == 0x31f;
+}
+const u16 SMALL_BLAST_HOT = 12;
+
 /* An effect's picture at its origin x,y on the screen: a glow of its own
  * shape twice, larger and added on, flickering, then the picture, smooth
  * (added on too when translucent: the jets of flame); a blast in a fire's
@@ -225,7 +235,12 @@ void drawEffect(u16 shape, u16 frameNumber, float x, float y, bool mirrored, boo
                      !translucent, &w, &h)) {
         return;
     }
-    if (isBlast(shape)) {
+    const bool small = isSmallBlast(shape);
+    if (isBlast(shape) || small) {
+        /* A small blast's heat as it burns out: whole for its first
+         * frames, cooling to a third by its last. */
+        const float cooled = static_cast<float>(frameNumber - SMALL_BLAST_HOT) / 42.0F;
+        const float cooling = frameNumber < SMALL_BLAST_HOT ? 1.0F : std::max(0.35F, 1.0F - cooled);
         for (int i = 0; i < w * h; i++) {
             if ((picture[i] & 0xffU) == 0U) {
                 continue;
@@ -234,9 +249,16 @@ void drawEffect(u16 shape, u16 frameNumber, float x, float y, bool mirrored, boo
             const auto green = static_cast<float>((picture[i] >> 16) & 0xffU);
             const auto blue = static_cast<float>((picture[i] >> 8) & 0xffU);
             const float light = ((red * 3) + (green * 6) + blue) / 2550.0F;
-            /* The darkest stay a deep red, smoke in the fire; the rest
-             * orange to gold, white in the hottest. */
-            const float heat = light < 0.06F ? 0.12F + (light * 2) : std::min(1.0F, 0.22F + (light * 1.25F));
+            if (small && std::max({red, green, blue}) - std::min({red, green, blue}) > 48) {
+                continue;
+            }
+            /* A small blast's greys by their light, from orange to a
+             * yellow white; a fireball's darkest stay a deep red, smoke
+             * in the fire, the rest orange to gold, white in the
+             * hottest. */
+            const float heat = small ? (0.3F + (light * 0.65F)) * cooling
+                               : light < 0.06F ? 0.12F + (light * 2)
+                                               : std::min(1.0F, 0.22F + (light * 1.25F));
             float r = 0;
             float g = 0;
             float b = 0;
