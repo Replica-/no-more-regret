@@ -1,7 +1,7 @@
 /* Smooth turns (with the upscaled textures, enhancements.h): the
  * Silencer's stands as he aims in 64 directions, not 16. port/tools/
  * smooth_turns.py makes three frames between each two of his directions
- * with RIFE, a frame interpolator, into No Remorse's static\turns.dat;
+ * with RIFE, a frame interpolator, into the game's static\turns.dat;
  * with it and the keyboard and mouse controls, standing in one of those
  * stands he is drawn in the frame nearest the pointer's way (DL_ItemNode's
  * place and draw), within half a direction of his own: his direction, the

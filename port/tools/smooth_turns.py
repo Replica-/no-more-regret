@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes No Remorse's static/turns.dat: the Silencer's stands as he aims
+"""Writes a game's static/turns.dat: the Silencer's stands as he aims
 (animations of shape 1 with a frame a direction) in 64 directions, not 16:
 three frames between each two of his directions, made by RIFE
 (rife-ncnn-vulkan, a frame interpolator, on the graphics card) from his 16

@@ -39,6 +39,35 @@ CANVAS = (256, 128)
 UNLIKE = 30
 
 
+def bled(image, size):
+    """The frame opaque on a canvas of size, its edge's colours spread out
+    over the empty pixels round it (and the rest its mean colour): the
+    upscaler sees no black round it, which it would darken its edges with
+    (seams between floor tiles)."""
+    rgba = numpy.zeros((size[1], size[0], 4), numpy.uint8)
+    rgba[:image.size[1], :image.size[0]] = numpy.asarray(image)
+    rgb = rgba[..., :3].astype(numpy.int32)
+    have = rgba[..., 3] > 0
+    if have.any():
+        rgb[~have] = rgb[have].mean(0).astype(numpy.int32)
+    filled = have.copy()
+    for _ in range(8):
+        grown = filled.copy()
+        total = numpy.zeros_like(rgb)
+        count = numpy.zeros(filled.shape, numpy.int32)
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            shifted = numpy.roll(filled, (dy, dx), (0, 1))
+            colours = numpy.roll(rgb, (dy, dx), (0, 1))
+            take = shifted & ~filled
+            total[take] += colours[take]
+            count[take] += 1
+        new = count > 0
+        rgb[new] = total[new] // count[new][:, None]
+        grown[new] = True
+        filled = grown
+    return Image.fromarray(rgb.astype(numpy.uint8), 'RGB')
+
+
 def unlike(original, big):
     """How far the upscaled frame's colours are from the frame's, on
     average over its pixels (0-255)."""
@@ -169,9 +198,7 @@ def main():
             name = f's{shape:04x}_f{number:04d}.png'
             image = frame_image(frame, palette)
             image.save(source / name)
-            canvas = Image.new('RGBA', (max(CANVAS[0], image.size[0]), max(CANVAS[1], image.size[1])), (0, 0, 0, 0))
-            canvas.paste(image, (0, 0))
-            canvas.save(padded / name)
+            bled(image, (max(CANVAS[0], image.size[0]), max(CANVAS[1], image.size[1]))).save(padded / name)
             names.append((shape, number, name))
 
     def esrgan(folder, out):
@@ -192,7 +219,7 @@ def main():
             one = alone / 'one'
             shutil.rmtree(one, ignore_errors=True)
             one.mkdir()
-            original.save(one / name)
+            bled(original, original.size).save(one / name)
             esrgan(one, alone)
             big = Image.open(alone / name).convert('RGBA')
             if unlike(original, big) > UNLIKE:

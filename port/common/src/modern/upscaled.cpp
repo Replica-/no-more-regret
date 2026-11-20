@@ -264,10 +264,15 @@ void drawUpscaled(bool silencer)
     screenGetColors(0, 256, now);
     const RGB *palette = gamePalette->data.get();
     int fade[256][3];
+    /* Each entry unfaded (the screen's palette the game's, as mostly):
+     * its upscaled pixels as they are. */
+    bool unfaded[256];
     for (int entry = 0; entry < 256; entry++) {
         const u8 base[3] = {palette[entry].red, palette[entry].green, palette[entry].blue};
+        unfaded[entry] = true;
         for (int k = 0; k < 3; k++) {
             fade[entry][k] = base[k] == 0U ? 256 : std::min(256, ((now[(entry * 3) + k] & 0x3f) * 256) / base[k]);
+            unfaded[entry] = unfaded[entry] && fade[entry][k] == 256;
         }
     }
     std::uint32_t his[256] = {};
@@ -344,6 +349,8 @@ void drawUpscaled(bool silencer)
                                                 std::min(255, (component * light) / entryBrightness))
                                             << (24 - (8 * k));
                                 }
+                            } else if (unfaded[colour]) {
+                                made = pixel;
                             } else {
                                 for (int k = 0; k < 3; k++) {
                                     const auto component = static_cast<int>((pixel >> (24 - (8 * k))) & 0xffU);
