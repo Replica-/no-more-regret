@@ -130,14 +130,13 @@ std::uint32_t picture[MOST_SIDE * MOST_SIDE];
 bool frameShows(int x, int y, u8 colour)
 {
     if (x >= 0 && y >= 0 && x < SCREEN_WIDTH && y < SCREEN_HEIGHT) {
-        if (screenViewport == nullptr) {
+        /* The video memory, flat (what the window shows): screenViewport's
+         * pixels are its bank's window. */
+        const u8 *shown = screenSvgaMemory();
+        if (shown == nullptr) {
             return true;
         }
-        const ViewportPixels screen = screenViewport->pixels();
-        if (x < screen.left || x > screen.right || y < screen.top || y > screen.bottom) {
-            return true;
-        }
-        return screen.pixels[screen.rows[y] + static_cast<u32>(x)] == colour;
+        return shown[(y * SCREEN_WIDTH) + x] == colour;
     }
     int width = 0;
     int height = 0;

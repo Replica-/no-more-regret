@@ -40,6 +40,9 @@ void keepExact(Viewport &view, u8 *address, u8 written, std::uint32_t rgb);
  * 0xRRGGBBFF in the screen's fade; 0 for the other entries (the upscaled
  * Silencer's, upscaled.h). */
 void silencerColours(std::uint32_t *out);
+/* The entry the screen shows for an entry of his frame: drawInColours's,
+ * his colours' table's (the entry itself in the game's own colours). */
+[[nodiscard]] u8 silencerShownEntry(u8 entry);
 /* Opens the choice over the world; the choice as a gump of its own (the
  * settings' button opens it); draws it while it is open, true then
  * (hud.cpp). */

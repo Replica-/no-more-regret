@@ -17,6 +17,10 @@
 /* Draws them over the world (hud.cpp): all but the Silencer under his
  * colours' layer, him over it, in his colours (colours.h). */
 void drawUpscaled(bool silencer);
+/* The Silencer drawn (DL_ItemNode::draw): his frame and its origin on the
+ * screen not scrolled, mirrored or not; laid over as the screen shows him,
+ * not as he is since (walking, he moves before he is drawn again). */
+void upscaledDrawn(u16 item, u16 shape, u16 frame, i16 x, i16 y, bool mirrored);
 /* Whether the item's shape and frame have an upscaled frame. */
 [[nodiscard]] bool upscaledFrame(u16 shape, u16 frame);
 /* Forgets them, read again when next asked for (closeShapeFiles). */

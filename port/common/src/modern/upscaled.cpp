@@ -131,12 +131,85 @@ struct Drawn {
 const int MOST_DRAWN = 512;
 Drawn drawn[MOST_DRAWN];
 
+/* The Silencer as last drawn (upscaledDrawn). */
+struct Drawing {
+    bool any;
+    u16 item;
+    u16 shape;
+    u16 frame;
+    i16 x;
+    i16 y;
+    bool mirrored;
+};
+/* His last drawing and the one before: the last may not be on the screen
+ * shown yet (drawn, not yet copied to the video memory). */
+Drawing silencerDrawn{};
+Drawing silencerBefore{};
+
+/* How many of a drawing's pixels (every seventh) the screen shows, in his
+ * colours' entries; shown is the frame's pixel at a column and row. */
+template <class Shown> int showing(const Drawing &drawing, int frameLeft, int frameTop, const Shown &shown)
+{
+    const auto *frame = reinterpret_cast<const u8 *>(cachedShapeFrame(drawing.shape, drawing.frame));
+    if (frame == nullptr) {
+        return 0;
+    }
+    const s32 width = drawframe::dword(frame + 4);
+    const s32 height = drawframe::dword(frame + 8);
+    const int x = drawing.x - scrollX + frameLeft;
+    const int y = drawing.y - scrollY + frameTop;
+    const int left = drawing.mirrored ? x - (width - 1 - drawframe::dword(frame + 0xc)) : x - drawframe::dword(frame + 0xc);
+    const int top = y - drawframe::dword(frame + 0x10);
+    const bool fills = (drawframe::dword(frame) & 1) != 0;
+    int count = 0;
+    int seen = 0;
+    for (s32 r = 0; r < height; r++) {
+        const u8 *rowEntry = frame + 0x14 + (4 * r);
+        const u8 *p = rowEntry + static_cast<u32>(drawframe::dword(rowEntry));
+        s32 c = 0;
+        while (c < width) {
+            c += *p++;
+            if (c >= width) {
+                break;
+            }
+            s32 length = *p++;
+            bool fill = false;
+            if (fills) {
+                fill = (length & 1) != 0;
+                length >>= 1;
+            }
+            const u8 *colours = p;
+            p += fill ? 1 : length;
+            for (s32 i = c; i < std::min(c + length, width); i++) {
+                if ((seen++ % 7) != 0) {
+                    continue;
+                }
+                const u8 colour = fill ? *colours : colours[i - c];
+                const int column = drawing.mirrored ? left + (width - 1 - i) : left + i;
+                count += shown(column, top + r) == silencerShownEntry(colour) ? 1 : 0;
+            }
+            c += length;
+        }
+    }
+    return count;
+}
+
 /* A colour's brightness, 0-255 a component. */
 int brightness(int red, int green, int blue)
 {
     return ((red * 3) + (green * 6) + blue) / 10;
 }
 
+}
+
+void upscaledDrawn(u16 item, u16 shape, u16 frame, i16 x, i16 y, bool mirrored)
+{
+    const Drawing now{true, item, shape, frame, x, y, mirrored};
+    if (now.frame != silencerDrawn.frame || now.x != silencerDrawn.x || now.y != silencerDrawn.y ||
+        now.mirrored != silencerDrawn.mirrored) {
+        silencerBefore = silencerDrawn;
+    }
+    silencerDrawn = now;
 }
 
 bool upscaledFrame(u16 shape, u16 frame)
@@ -170,6 +243,11 @@ void drawUpscaled(bool silencer)
     int sidesWidth = 0;
     int sidesHeight = 0;
     const u8 *sides = wideSidesPixels(&sidesWidth, &sidesHeight);
+    /* The screen shown (the video memory, flat: what the window shows): the
+     * screen drawn may be part way through a redraw (the Silencer taken
+     * away from where he stood, not yet drawn where he is: he came and
+     * went). */
+    const u8 *shownScreen = screenSvgaMemory();
     const ViewportPixels screen = drawViewport->pixels();
     /* What the frame shows at its column and row: the screen's pixel or
      * the sides'; -1 for none. */
@@ -179,6 +257,9 @@ void drawUpscaled(bool silencer)
         if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
             if (x < screen.left || x > screen.right || y < screen.top || y > screen.bottom) {
                 return -1;
+            }
+            if (shownScreen != nullptr) {
+                return shownScreen[(y * SCREEN_WIDTH) + x];
             }
             return screen.pixels[screen.rows[y] + static_cast<u32>(x)];
         }
@@ -195,22 +276,37 @@ void drawUpscaled(bool silencer)
     int boxRight = -1;
     int boxBottom = -1;
     const auto note = [&](u16 item) {
-        /* The frame it is drawn in (turns.h). */
-        const u16 frameNumber = turnFrame(item, Item(item).frame());
-        const int index = find(itemShape[item], frameNumber);
+        /* The frame it is drawn in (turns.h), at DL_ItemNode::draw's place,
+         * scrolled, on the frame; the Silencer's as last drawn. */
+        u16 shape = itemShape[item];
+        u16 frameNumber = turnFrame(item, Item(item).frame());
+        const i16 hx = static_cast<i16>(itemX[item] >> 1);
+        const i16 hy = static_cast<i16>(itemY[item] >> 1);
+        int x = hx - hy - scrollX + frameLeft;
+        int y = (hx >> 1) + (hy >> 1) - itemZ[item] - scrollY + frameTop;
+        bool mirrored = (itemFlags[item] & ITEM_FLIPPED) != 0;
+        if (silencer && silencerDrawn.any && silencerDrawn.item == item) {
+            /* Whichever of his last two drawings the screen shows more
+             * of. */
+            const Drawing &use = (silencerBefore.any && silencerBefore.item == item &&
+                                  showing(silencerBefore, frameLeft, frameTop, shown) >
+                                      showing(silencerDrawn, frameLeft, frameTop, shown))
+                                     ? silencerBefore
+                                     : silencerDrawn;
+            shape = use.shape;
+            frameNumber = use.frame;
+            x = use.x - scrollX + frameLeft;
+            y = use.y - scrollY + frameTop;
+            mirrored = use.mirrored;
+        }
+        const int index = find(shape, frameNumber);
         if (index < 0) {
             return;
         }
-        const auto *frame = reinterpret_cast<const u8 *>(cachedShapeFrame(itemShape[item], frameNumber));
+        const auto *frame = reinterpret_cast<const u8 *>(cachedShapeFrame(shape, frameNumber));
         if (frame == nullptr) {
             return;
         }
-        /* DL_ItemNode::draw's place, scrolled, on the frame. */
-        const i16 hx = static_cast<i16>(itemX[item] >> 1);
-        const i16 hy = static_cast<i16>(itemY[item] >> 1);
-        const int x = hx - hy - scrollX + frameLeft;
-        const int y = (hx >> 1) + (hy >> 1) - itemZ[item] - scrollY + frameTop;
-        const bool mirrored = (itemFlags[item] & ITEM_FLIPPED) != 0;
         const s32 width = drawframe::dword(frame + 4);
         const s32 height = drawframe::dword(frame + 8);
         const u8 *entry = upscaled.table + (static_cast<std::size_t>(index) * ENTRY);
@@ -318,7 +414,9 @@ void drawUpscaled(bool silencer)
                         continue;
                     }
                     const u8 colour = fill ? *colours : colours[i - c];
-                    if (shown(frameColumn, frameRow) != colour) {
+                    /* His pixels: the screen shows them in his colours'
+                     * entries (colours.h). */
+                    if (shown(frameColumn, frameRow) != (silencer ? silencerShownEntry(colour) : colour)) {
                         continue;
                     }
                     /* His colours' entries: the chosen colour (faded), as

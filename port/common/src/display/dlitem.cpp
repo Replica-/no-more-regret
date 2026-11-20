@@ -3,6 +3,7 @@
 #include "blood.h"
 #include "shadows.h"
 #include "turns.h"
+#include "upscaled.h"
 #include "colours.h"
 #include "gamestate.h"
 #include "animprim.h"
@@ -126,6 +127,11 @@ void DL_ItemNode::draw()
         if (nodeItem.isNpc()) {
             paintShadow(nodeItem.id, image, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY),
                         (nodeFlags & ITEM_FLIPPED) != 0, drawView);
+        }
+        /* The port's: the Silencer as drawn, for his upscaled frame
+         * (upscaled.h). */
+        if (nodeItem.isSilencer()) {
+            upscaledDrawn(nodeItem.id, shape, frame, screenX, screenY, (nodeFlags & ITEM_FLIPPED) != 0);
         }
         if ((nodeFlags & ITEM_FLIPPED) != 0) {
             if ((nodeFlags & ITEM_INVISIBLE) != 0) {

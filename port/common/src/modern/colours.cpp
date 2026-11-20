@@ -901,6 +901,20 @@ bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrore
         } else {
             drawframe::draw<false>(pixels, x, y, bytes, keep);
         }
+        /* The box is his whole frame's, not the pixels written: drawn in
+         * part of the screen only (another's redraw clipping him), his
+         * pixels outside that part are still his, and were dropped (his
+         * colours, and his upscaled frame, came and went as he walked). */
+        const bool onScreen = drawViewport != nullptr && pixels.pixels == drawViewport->pixels().pixels;
+        const int width = drawframe::dword(bytes + 4);
+        const int height = drawframe::dword(bytes + 8);
+        const int left = (mirrored ? x - (width - 1 - drawframe::dword(bytes + 0xc)) : x - drawframe::dword(bytes + 0xc)) +
+                         (onScreen ? layerLeft : 0);
+        const int top = y - drawframe::dword(bytes + 0x10) + (onScreen ? layerTop : 0);
+        passLeft = std::min(passLeft, left);
+        passTop = std::min(passTop, top);
+        passRight = std::max(passRight, left + width - 1);
+        passBottom = std::max(passBottom, top + height - 1);
         return true;
     }
     /* Else in the palette's nearest (without the hardware scene). */
@@ -990,11 +1004,22 @@ void drawColoursLayer()
     const int width = right - left + 1;
     const int height = bottom - top + 1;
     std::fill_n(layerPicture, static_cast<std::size_t>(width) * height, 0U);
+    /* Drawn only where the screen shown (the video memory, flat: what the
+     * window shows) has them too: the screen drawn may be part way through
+     * a redraw (him taken away from where he stood, not yet drawn where he
+     * is), which drops nothing but is not shown. */
+    const u8 *onScreen = screenSvgaMemory();
     for (std::size_t i = 0; i < layerCount; i++) {
         const u32 at = layerPixels[i];
         const auto column = static_cast<int>(at % LAYER_FRAME_WIDTH);
         const auto row = static_cast<int>(at / LAYER_FRAME_WIDTH);
         const auto entry = static_cast<u8>(layerMap[at] - 1);
+        const int screenX = column - layerLeft;
+        const int screenY = row - layerTop;
+        if (onScreen != nullptr && screenX >= 0 && screenX < SCREEN_WIDTH && screenY >= 0 &&
+            screenY < SCREEN_HEIGHT && onScreen[(screenY * SCREEN_WIDTH) + screenX] != entry) {
+            continue;
+        }
         std::uint32_t colour = layerColour[at];
         if (colour == 0U) {
             colour = exact[layerSource[at]];
@@ -1044,4 +1069,12 @@ bool drawColours()
 void silencerColours(std::uint32_t *out)
 {
     exactColours(out, true);
+}
+
+u8 silencerShownEntry(u8 entry)
+{
+    if (chosen == PRESETS[0].colours) {
+        return entry;
+    }
+    return tableFor(chosen)[entry];
 }
