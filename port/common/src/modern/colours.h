@@ -36,6 +36,10 @@ void drawColoursLayer();
  * was written in the palette's written but is rgb (0xRRGGBB) exactly: with
  * the hardware scene, shown so by the same layer (the blood's, blood.h). */
 void keepExact(Viewport &view, u8 *address, u8 written, std::uint32_t rgb);
+/* Each palette entry of his colours' ramps as the layer shows it,
+ * 0xRRGGBBFF in the screen's fade; 0 for the other entries (the upscaled
+ * Silencer's, upscaled.h). */
+void silencerColours(std::uint32_t *out);
 /* Opens the choice over the world; the choice as a gump of its own (the
  * settings' button opens it); draws it while it is open, true then
  * (hud.cpp). */

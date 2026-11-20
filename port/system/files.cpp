@@ -585,6 +585,24 @@ std::vector<std::uint8_t> fileContents(const char *path)
     return bytes;
 }
 
+const std::uint8_t *fileHeld(const char *path, std::size_t *size)
+{
+    const SystemSide systemSide;
+    static std::map<std::string, std::vector<std::uint8_t>> held;
+    const std::string key = portHostPath(path).string();
+    auto found = held.find(key);
+    if (found == held.end()) {
+        std::vector<std::uint8_t> bytes = fileContents(path);
+        if (bytes.empty()) {
+            *size = 0;
+            return nullptr;
+        }
+        found = held.emplace(key, std::move(bytes)).first;
+    }
+    *size = found->second.size();
+    return found->second.data();
+}
+
 std::FILE *portHostFopen(const fs::path &path, const char *mode)
 {
 #ifdef _WIN32

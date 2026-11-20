@@ -286,8 +286,9 @@ void drawHud()
         drawMenuPointer();
         return;
     }
-    drawUpscaled();
+    drawUpscaled(false);
     drawColoursLayer();
+    drawUpscaled(true);
     drawLighting();
     drawBlood();
     drawEffects();

@@ -1040,3 +1040,8 @@ bool drawColours()
     drawMenuPointer();
     return true;
 }
+
+void silencerColours(std::uint32_t *out)
+{
+    exactColours(out, true);
+}

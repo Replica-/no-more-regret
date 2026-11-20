@@ -2,10 +2,12 @@
 #include "upscaled.h"
 #include "gamestate.h"
 #include "camera.h"
+#include "colours.h"
+#include "control.h"
 #include "crusys.h"
 #include "drawframe.h"
 #include "enhancements.h"
-#include "file.h"
+#include "files.h"
 #include "filespec.h"
 #include "gamefile.h"
 #include "gamepal.h"
@@ -16,8 +18,8 @@
 #include "screen.h"
 #include "shape.h"
 #include "shaphand.h"
+#include "turns.h"
 #include "type.h"
-#include "utility.h"
 #include "viewport.h"
 #include "widesides.h"
 #include "world.h"
@@ -28,71 +30,60 @@
 
 namespace {
 
-/* static\upscaled.dat (upscale.py): "UPSC", the scale and the count of
- * frames; each frame's shape, frame and size upscaled; then their pixels,
- * 0xRRGGBBAA. Read when first asked for, into the game's memory, and this
- * record of it in the arena: a snapshot or a rewind takes both back
- * together, read or not. */
-struct UpFrame {
-    u16 shape;
-    u16 frame;
-    u16 width;
-    u16 height;
-};
+/* static\upscaled.dat (upscale.py): "UPS2", the scale (u16) and the count
+ * of frames (u32); each frame's shape, frame and size upscaled (u16 each)
+ * and its first pixel's place (u32), in the order of shape and frame; then
+ * the pixels, 0xRRGGBBAA. Held whole outside the arena (files.h's
+ * fileHeld: a hundred megabytes with the Silencer's), read when first asked
+ * for; this record of it in the arena. */
+const std::size_t HEADER = 10;
+const std::size_t ENTRY = 12;
 struct Upscaled {
     bool read;
     bool any;
-    u16 scale;
-    u16 count;
-    UpFrame *frames;
-    /* Each frame's first pixel. */
-    u32 *starts;
-    std::uint32_t *pixels;
+    u32 count;
+    const u8 *table;
+    const u8 *pixels;
 };
 Upscaled &upscaled = gameGlobal<Upscaled>();
+
+u16 word(const u8 *at)
+{
+    return static_cast<u16>(at[0] | (at[1] << 8));
+}
+
+u32 dword(const u8 *at)
+{
+    u32 value = 0;
+    std::memcpy(&value, at, 4);
+    return value;
+}
 
 void readUpscaled()
 {
     upscaled.read = true;
-    char *path = makePath(nullptr, staticDirectory, "upscaled.dat", nullptr);
-    if (fileExists(path) == 0) {
+    std::size_t size = 0;
+    const u8 *data = fileHeld(makePath(nullptr, staticDirectory, "upscaled.dat", nullptr), &size);
+    if (data == nullptr || size < HEADER || std::memcmp(data, "UPS2", 4) != 0 || word(data + 4) != 2) {
         return;
     }
-    File file;
-    file.open(path, FILE_READ, 0);
-    if (file.isOpen() == 0U) {
+    const u32 count = dword(data + 6);
+    if (count == 0 || size < HEADER + (count * ENTRY)) {
         return;
     }
-    char magic[4];
-    bool whole = file.read(magic, 4, 0) == 4 && std::memcmp(magic, "UPSC", 4) == 0 &&
-                 file.read(&upscaled.scale, 2, -1) == 2 && file.read(&upscaled.count, 2, -1) == 2 &&
-                 upscaled.scale == 2 && upscaled.count != 0;
-    if (whole) {
-        upscaled.frames = new UpFrame[upscaled.count];
-        const auto size = static_cast<s32>(upscaled.count * sizeof(UpFrame));
-        whole = file.read(upscaled.frames, size, -1) == size;
-    }
-    if (whole) {
-        upscaled.starts = new u32[upscaled.count];
-        u32 total = 0;
-        for (u16 i = 0; i < upscaled.count; i++) {
-            upscaled.starts[i] = total;
-            total += static_cast<u32>(upscaled.frames[i].width) * upscaled.frames[i].height;
-        }
-        upscaled.pixels = new std::uint32_t[total];
-        const auto bytes = static_cast<s32>(total * sizeof(std::uint32_t));
-        whole = file.read(upscaled.pixels, bytes, -1) == bytes;
-    }
-    file.close();
-    if (!whole) {
-        releaseUpscaled();
-        upscaled.read = true;
+    const u8 *last = data + HEADER + ((count - 1) * ENTRY);
+    const std::size_t pixels = (static_cast<std::size_t>(dword(last + 8)) + (word(last + 4) * word(last + 6))) * 4;
+    if (size < HEADER + (count * ENTRY) + pixels) {
         return;
     }
+    upscaled.count = count;
+    upscaled.table = data + HEADER;
+    upscaled.pixels = data + HEADER + (count * ENTRY);
     upscaled.any = true;
 }
 
-/* The upscaled frame of shape's frame, its index, -1 for none. */
+/* The upscaled frame of shape's frame, its index, -1 for none: the table
+ * is in the order of shape and frame. */
 int find(u16 shape, u16 frame)
 {
     if (!upscaled.read) {
@@ -101,9 +92,20 @@ int find(u16 shape, u16 frame)
     if (!upscaled.any) {
         return -1;
     }
-    for (u16 i = 0; i < upscaled.count; i++) {
-        if (upscaled.frames[i].shape == shape && upscaled.frames[i].frame == frame) {
-            return i;
+    const u32 key = (static_cast<u32>(shape) << 16) | frame;
+    u32 low = 0;
+    u32 high = upscaled.count;
+    while (low < high) {
+        const u32 middle = (low + high) / 2;
+        const u8 *entry = upscaled.table + (middle * ENTRY);
+        const u32 here = (static_cast<u32>(word(entry)) << 16) | word(entry + 2);
+        if (here == key) {
+            return static_cast<int>(middle);
+        }
+        if (here < key) {
+            low = middle + 1;
+        } else {
+            high = middle;
         }
     }
     return -1;
@@ -129,6 +131,12 @@ struct Drawn {
 const int MOST_DRAWN = 512;
 Drawn drawn[MOST_DRAWN];
 
+/* A colour's brightness, 0-255 a component. */
+int brightness(int red, int green, int blue)
+{
+    return ((red * 3) + (green * 6) + blue) / 10;
+}
+
 }
 
 bool upscaledFrame(u16 shape, u16 frame)
@@ -138,13 +146,11 @@ bool upscaledFrame(u16 shape, u16 frame)
 
 void releaseUpscaled()
 {
-    delete[] upscaled.frames;
-    delete[] upscaled.starts;
-    delete[] upscaled.pixels;
+    /* The bytes stay held (fileHeld): only the record goes. */
     upscaled = Upscaled{};
 }
 
-void drawUpscaled()
+void drawUpscaled(bool silencer)
 {
     if (!upscaledSetting() || !hardwareSetting() || worldActive == 0U || worldFrozen != 0U ||
         drawViewport == nullptr) {
@@ -181,55 +187,67 @@ void drawUpscaled()
         }
         return sides[(static_cast<std::size_t>(row) * sidesWidth) + column];
     };
-    /* The items on the screen with an upscaled frame, and their box. */
+    /* The items on the screen with an upscaled frame, and their box: the
+     * Silencer alone, or all but him. */
     int count = 0;
     int boxLeft = frameWidth;
     int boxTop = frameHeight;
     int boxRight = -1;
     int boxBottom = -1;
-    u16 middleX;
-    u16 middleY;
-    screenToMap(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, &middleX, &middleY);
-    const int column = middleX >> CHUNK_SHIFT;
-    const int row = middleY >> CHUNK_SHIFT;
-    for (int c = std::max(0, column - 5); c <= std::min(CHUNKS - 1, column + 5) && count < MOST_DRAWN; c++) {
-        for (int r = std::max(0, row - 5); r <= std::min(CHUNKS - 1, row + 5) && count < MOST_DRAWN; r++) {
-            for (u16 item = mapChunks[c][r]; item != 0U && count < MOST_DRAWN; item = itemNext[item]) {
-                if (item < FIRST_ITEM || (itemFlags[item] & (ITEM_CONTAINED | ITEM_INVISIBLE)) != 0) {
-                    continue;
+    const auto note = [&](u16 item) {
+        /* The frame it is drawn in (turns.h). */
+        const u16 frameNumber = turnFrame(item, Item(item).frame());
+        const int index = find(itemShape[item], frameNumber);
+        if (index < 0) {
+            return;
+        }
+        const auto *frame = reinterpret_cast<const u8 *>(cachedShapeFrame(itemShape[item], frameNumber));
+        if (frame == nullptr) {
+            return;
+        }
+        /* DL_ItemNode::draw's place, scrolled, on the frame. */
+        const i16 hx = static_cast<i16>(itemX[item] >> 1);
+        const i16 hy = static_cast<i16>(itemY[item] >> 1);
+        const int x = hx - hy - scrollX + frameLeft;
+        const int y = (hx >> 1) + (hy >> 1) - itemZ[item] - scrollY + frameTop;
+        const bool mirrored = (itemFlags[item] & ITEM_FLIPPED) != 0;
+        const s32 width = drawframe::dword(frame + 4);
+        const s32 height = drawframe::dword(frame + 8);
+        const u8 *entry = upscaled.table + (static_cast<std::size_t>(index) * ENTRY);
+        if (word(entry + 4) != width * SCALE || word(entry + 6) != height * SCALE) {
+            return;
+        }
+        const int left = mirrored ? x - (width - 1 - drawframe::dword(frame + 0xc)) : x - drawframe::dword(frame + 0xc);
+        const int top = y - drawframe::dword(frame + 0x10);
+        if (left + width <= 0 || top + height <= 0 || left >= frameWidth || top >= frameHeight) {
+            return;
+        }
+        drawn[count++] = Drawn{index, frame, left, top, mirrored};
+        boxLeft = std::min(boxLeft, std::max(0, left));
+        boxTop = std::min(boxTop, std::max(0, top));
+        boxRight = std::max(boxRight, std::min(frameWidth - 1, left + width - 1));
+        boxBottom = std::max(boxBottom, std::min(frameHeight - 1, top + height - 1));
+    };
+    if (silencer) {
+        const Item him(controlledActor);
+        if (him.isValid() && him.isSilencer() && (itemFlags[him.id] & (ITEM_CONTAINED | ITEM_INVISIBLE)) == 0) {
+            note(him.id);
+        }
+    } else {
+        u16 middleX;
+        u16 middleY;
+        screenToMap(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, &middleX, &middleY);
+        const int column = middleX >> CHUNK_SHIFT;
+        const int row = middleY >> CHUNK_SHIFT;
+        for (int c = std::max(0, column - 5); c <= std::min(CHUNKS - 1, column + 5) && count < MOST_DRAWN; c++) {
+            for (int r = std::max(0, row - 5); r <= std::min(CHUNKS - 1, row + 5) && count < MOST_DRAWN; r++) {
+                for (u16 item = mapChunks[c][r]; item != 0U && count < MOST_DRAWN; item = itemNext[item]) {
+                    if (item < FIRST_ITEM || (itemFlags[item] & (ITEM_CONTAINED | ITEM_INVISIBLE)) != 0 ||
+                        Item(item).isSilencer()) {
+                        continue;
+                    }
+                    note(item);
                 }
-                const u16 frameNumber = Item(item).frame();
-                const int index = find(itemShape[item], frameNumber);
-                if (index < 0) {
-                    continue;
-                }
-                const auto *frame = reinterpret_cast<const u8 *>(cachedShapeFrame(itemShape[item], frameNumber));
-                if (frame == nullptr) {
-                    continue;
-                }
-                /* DL_ItemNode::draw's place, scrolled, on the frame. */
-                const i16 hx = static_cast<i16>(itemX[item] >> 1);
-                const i16 hy = static_cast<i16>(itemY[item] >> 1);
-                const int x = hx - hy - scrollX + frameLeft;
-                const int y = (hx >> 1) + (hy >> 1) - itemZ[item] - scrollY + frameTop;
-                const bool mirrored = (itemFlags[item] & ITEM_FLIPPED) != 0;
-                const s32 width = drawframe::dword(frame + 4);
-                const s32 height = drawframe::dword(frame + 8);
-                const UpFrame &up = upscaled.frames[index];
-                if (up.width != width * SCALE || up.height != height * SCALE) {
-                    continue;
-                }
-                const int left = mirrored ? x - (width - 1 - drawframe::dword(frame + 0xc))
-                                          : x - drawframe::dword(frame + 0xc);
-                const int top = y - drawframe::dword(frame + 0x10);
-                if (left + width <= 0 || top + height <= 0 || left >= frameWidth || top >= frameHeight) {
-                    continue;
-                }
-                drawn[count++] = Drawn{index, frame, left, top, mirrored};
-                boxLeft = std::min(boxLeft, std::max(0, left));
-                boxTop = std::min(boxTop, std::max(0, top));
-                boxRight = std::max(boxRight, std::min(frameWidth - 1, left + width - 1));
-                boxBottom = std::max(boxBottom, std::min(frameHeight - 1, top + height - 1));
             }
         }
     }
@@ -240,7 +258,8 @@ void drawUpscaled()
     const int rows = (boxBottom - boxTop + 1) * SCALE;
     std::fill_n(layer, static_cast<std::size_t>(pitch) * rows, 0U);
     /* The palette's fade of each entry (the screen's against the game's, of
-     * 256), as the Silencer's colours have it. */
+     * 256), as the Silencer's colours have it; his colours' entries in
+     * those (colours.h), 0 for the others. */
     u8 now[256 * 3];
     screenGetColors(0, 256, now);
     const RGB *palette = gamePalette->data.get();
@@ -251,11 +270,16 @@ void drawUpscaled()
             fade[entry][k] = base[k] == 0U ? 256 : std::min(256, ((now[(entry * 3) + k] & 0x3f) * 256) / base[k]);
         }
     }
+    std::uint32_t his[256] = {};
+    if (silencer) {
+        silencerColours(his);
+    }
     bool any = false;
     for (int d = 0; d < count; d++) {
         const Drawn &item = drawn[d];
-        const UpFrame &up = upscaled.frames[item.index];
-        const std::uint32_t *source = upscaled.pixels + upscaled.starts[item.index];
+        const u8 *entry = upscaled.table + (static_cast<std::size_t>(item.index) * ENTRY);
+        const int upWidth = word(entry + 4);
+        const u8 *source = upscaled.pixels + (static_cast<std::size_t>(dword(entry + 8)) * 4);
         const u8 *frame = item.frame;
         const s32 width = drawframe::dword(frame + 4);
         const s32 height = drawframe::dword(frame + 8);
@@ -267,8 +291,8 @@ void drawUpscaled()
             if (frameRow < boxTop || frameRow > boxBottom) {
                 continue;
             }
-            const u8 *entry = frame + 0x14 + (4 * r);
-            const u8 *p = entry + static_cast<u32>(drawframe::dword(entry));
+            const u8 *rowEntry = frame + 0x14 + (4 * r);
+            const u8 *p = rowEntry + static_cast<u32>(drawframe::dword(rowEntry));
             s32 c = 0;
             while (c < width) {
                 c += *p++;
@@ -292,24 +316,44 @@ void drawUpscaled()
                     if (shown(frameColumn, frameRow) != colour) {
                         continue;
                     }
+                    /* His colours' entries: the chosen colour (faded), as
+                     * bright as the upscaled pixel is against the entry. */
+                    const std::uint32_t chosen = his[colour];
+                    const int entryBrightness =
+                        std::max(1, brightness((palette[colour].red * 255) / 63, (palette[colour].green * 255) / 63,
+                                               (palette[colour].blue * 255) / 63));
                     for (int dy = 0; dy < SCALE; dy++) {
                         for (int dx = 0; dx < SCALE; dx++) {
                             /* Mirrored, the upscaled block's columns too. */
                             const int sourceX = item.mirrored ? (i * SCALE) + (SCALE - 1 - dx) : (i * SCALE) + dx;
-                            const std::uint32_t pixel =
-                                source[(static_cast<std::size_t>((r * SCALE) + dy) * up.width) + sourceX];
+                            std::uint32_t pixel = 0;
+                            std::memcpy(&pixel,
+                                        source + ((((static_cast<std::size_t>((r * SCALE) + dy) * upWidth)) + sourceX) * 4),
+                                        4);
                             if ((pixel & 0xffU) == 0U) {
                                 continue;
                             }
-                            std::uint32_t faded = pixel & 0xffU;
-                            for (int k = 0; k < 3; k++) {
-                                const auto component = static_cast<int>((pixel >> (24 - (8 * k))) & 0xffU);
-                                faded |= static_cast<std::uint32_t>((component * fade[colour][k]) / 256)
-                                         << (24 - (8 * k));
+                            std::uint32_t made = pixel & 0xffU;
+                            if (chosen != 0U) {
+                                const int light = brightness(static_cast<int>((pixel >> 24) & 0xffU),
+                                                             static_cast<int>((pixel >> 16) & 0xffU),
+                                                             static_cast<int>((pixel >> 8) & 0xffU));
+                                for (int k = 0; k < 3; k++) {
+                                    const auto component = static_cast<int>((chosen >> (24 - (8 * k))) & 0xffU);
+                                    made |= static_cast<std::uint32_t>(
+                                                std::min(255, (component * light) / entryBrightness))
+                                            << (24 - (8 * k));
+                                }
+                            } else {
+                                for (int k = 0; k < 3; k++) {
+                                    const auto component = static_cast<int>((pixel >> (24 - (8 * k))) & 0xffU);
+                                    made |= static_cast<std::uint32_t>((component * fade[colour][k]) / 256)
+                                            << (24 - (8 * k));
+                                }
                             }
                             const int lx = ((frameColumn - boxLeft) * SCALE) + dx;
                             const int ly = ((frameRow - boxTop) * SCALE) + dy;
-                            layer[(static_cast<std::size_t>(ly) * pitch) + lx] = faded;
+                            layer[(static_cast<std::size_t>(ly) * pitch) + lx] = made;
                             any = true;
                         }
                     }
