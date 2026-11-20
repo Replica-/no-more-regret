@@ -1,6 +1,7 @@
 /* DLITEM.C (Code55): the items in the display list. See dlitem.h. */
 #include "dlitem.h"
 #include "blood.h"
+#include "seethrough.h"
 #include "shadows.h"
 #include "turns.h"
 #include "upscaled.h"
@@ -131,7 +132,12 @@ void DL_ItemNode::draw()
         /* The port's: the item as drawn, for its upscaled frame
          * (upscaled.h). */
         upscaledDrawn(nodeItem.id, shape, frame, screenX, screenY, (nodeFlags & ITEM_FLIPPED) != 0);
-        if ((nodeFlags & ITEM_FLIPPED) != 0) {
+        if (seeThrough(nodeItem.id)) {
+            /* The port's: half through while the player sees through
+             * (seethrough.h). */
+            drawSeeThrough(drawView, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY), image,
+                           (nodeFlags & ITEM_FLIPPED) != 0);
+        } else if ((nodeFlags & ITEM_FLIPPED) != 0) {
             if ((nodeFlags & ITEM_INVISIBLE) != 0) {
                 drawView.drawShapeMirroredTranslucent(screenX - scrollX, screenY - scrollY, image,
                                                       paletteTables->translucent.get());

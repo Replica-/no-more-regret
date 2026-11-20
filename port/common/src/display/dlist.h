@@ -228,6 +228,10 @@ void deleteNode(u16 node);
 void deleteEdge(u16 edge);
 /* The node at screen point x,y, or 0. */
 u16 nodeAt(i16 x, i16 y);
+/* The port's: the node of an item wanted whose picture is at screen point
+ * x,y, whatever is drawn in front of it (seethrough.h's bodies); 0 for
+ * none. */
+u16 wantedNodeAt(i16 x, i16 y, bool (*wanted)(u16 item));
 /* Puts the nodes in area on changedNodes and their items in movedItems. */
 void changeArea(Rect *area);
 /* Steps the animated items on the screen. */

@@ -164,6 +164,8 @@ enum class Action : u8 {
     MISSION_MAP,
     /* The port's choice of the Silencer's colours (modern/colours.h). */
     CHARACTER_COLOURS,
+    /* The port's see-through view, while held (modern/seethrough.h). */
+    SEE_THROUGH,
     /* The keys of the world's gump while it selects items
      * (WorldGump::handleKeyboard, selectItems). */
     SELECTION_PREVIOUS,

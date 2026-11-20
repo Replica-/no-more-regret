@@ -638,6 +638,23 @@ u16 nodeAt(i16 x, i16 y)
     return found;
 }
 
+u16 wantedNodeAt(i16 x, i16 y, bool (*wanted)(u16 item))
+{
+    x += scrollX;
+    y += scrollY;
+    const u16 cell = gridCells[static_cast<i16>(y - viewY) >> 7][static_cast<i16>(x - viewX) >> 7];
+    u16 found = 0;
+    DL_Edge *link;
+    for (u16 edge = nodeOf(cell)->edgesIn; edge != 0U; edge = link->nextIn) {
+        link = edgeOf(edge);
+        DL_Node *over = nodeOf(link->first);
+        if (over->kind == NODE_ITEM && wanted(static_cast<DL_ItemNode *>(over)->item) && over->hit(x, y)) {
+            found = link->first;
+        }
+    }
+    return found;
+}
+
 void changeArea(Rect *area)
 {
     i16 left = static_cast<i16>(area->left - viewX) >> 7;

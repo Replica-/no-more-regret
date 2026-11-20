@@ -30,6 +30,7 @@
 #include "rect.h"
 #include "camera.h"
 #include "spmgr.h"
+#include "seethrough.h"
 #include "gravity.h"
 #include "missile.h"
 #include "snap.h"
@@ -1605,6 +1606,11 @@ u16 Item::avatarStoleSomething(u16 value)
 
 bool itemAt(u16 *item, i16 x, i16 y)
 {
+    /* The port's: while the player sees through, a body there before what
+     * stands in front of it (seethrough.h). */
+    if (seeThroughBodyAt(item, x, y)) {
+        return true;
+    }
     /* The port's wide screen: a point off the screen, on its sides. */
     if (x < 0 || x >= SCREEN_WIDTH || y < 0 || y >= SCREEN_HEIGHT) {
         return wideSidesItemAt(item, x, y);

@@ -119,6 +119,7 @@ constexpr ActionInfo ACTION_INFOS[] = {
     {Action::ITEM_WHEEL, "item_wheel", Domain::WORLD},
     {Action::MISSION_MAP, "mission_map", Domain::WORLD},
     {Action::CHARACTER_COLOURS, "character_colours", Domain::WORLD},
+    {Action::SEE_THROUGH, "see_through", Domain::WORLD},
     {Action::SELECTION_PREVIOUS, "selection_previous", Domain::SELECTION},
     {Action::SELECTION_NEXT, "selection_next", Domain::SELECTION},
     {Action::SELECTION_CHOOSE, "selection_choose", Domain::SELECTION},
@@ -450,7 +451,8 @@ enum class NumLock : u8 { ANY, ON, OFF };
 struct Input {
     InputKind kind = InputKind::KEY;
     /* KEY: the key, the Num Lock state it needs, the modifiers held with it;
-     * MODIFIER: the modifier (one of MOD_*). */
+     * MODIFIER: the modifier (one of MOD_*); CODE: the key it comes of,
+     * 0 for none (parseCode). */
     u8 scan = 0;
     u8 extended = 0;
     NumLock numLock = NumLock::ANY;
@@ -586,9 +588,25 @@ const CodeName CODE_NAMES[] = {
     {"esc", ASCII_ESCAPE}, {"enter", '\r'}, {"tab", '\t'}, {"backspace", '\b'}, {"space", ' '},
 };
 
+/* The key a code's text names, for how long it is held (actionHeld): a
+ * character's (its key without Shift, a letter's lower case), a named
+ * code's, or the key of a code by its key; none (0) for a character no key
+ * of the table gives as it is. */
+void codeKey(const std::string &text, Input *input)
+{
+    std::string name = text;
+    if (name.size() == 1 && name[0] >= 'A' && name[0] <= 'Z') {
+        name[0] = static_cast<char>(name[0] - 'A' + 'a');
+    }
+    const KeyName *key = keyNamed(name);
+    input->scan = key != nullptr ? key->scan : 0;
+    input->extended = key != nullptr ? key->extended : 0;
+}
+
 bool parseCode(std::string text, Input *input)
 {
     input->kind = InputKind::CODE;
+    codeKey(text, input);
     if (text.size() == 1 && text[0] > ' ' && text[0] < 0x7f) {
         input->code = static_cast<i16>(static_cast<u8>(text[0]));
         return true;
@@ -613,6 +631,8 @@ bool parseCode(std::string text, Input *input)
         kind = KEYCODE_ALT;
     }
     input->code = static_cast<i16>(kind | key->scan);
+    input->scan = key->scan;
+    input->extended = key->extended;
     return true;
 }
 
@@ -1422,7 +1442,8 @@ u16 actionHeld(Action action)
     u16 most = 0;
     for (const Input &input : bound[indexOf(action)]) {
         u16 repeats = 0;
-        if (input.kind == InputKind::KEY) {
+        if (input.kind == InputKind::KEY || (input.kind == InputKind::CODE && input.scan != 0U)) {
+            /* A code by its key (parseCode). */
             repeats = keyRepeats(input.scan, input.extended);
         } else if (input.kind == InputKind::DEVICE) {
             repeats = deviceRepeats(input.device, action);

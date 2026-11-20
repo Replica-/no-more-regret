@@ -103,6 +103,7 @@ const ActionDefault GAME_ACTION_DEFAULTS[] = {
     {Action::ITEM_WHEEL, ""},
     {Action::MISSION_MAP, ""},
     {Action::CHARACTER_COLOURS, ""},
+    {Action::SEE_THROUGH, ""},
     {Action::SELECTION_PREVIOUS, ", < wheel_up pad_left lstick_left"},
     {Action::SELECTION_NEXT, ". > s S wheel_down pad_right lstick_right"},
     {Action::SELECTION_CHOOSE, "enter space insert pad_a"},
@@ -127,7 +128,9 @@ const std::size_t GAME_ACTION_DEFAULT_COUNT = std::size(GAME_ACTION_DEFAULTS);
  * kneels, N selects the items about (E chooses among them), F grabs them, G uses the item held,
  * H the medical kit, T the energy cube, Y the radiation shield, R readies
  * the weapon, Tab opens the weapon wheel and I the item wheel, M the
- * mission map, P the colours, L the datalink (Ctrl+D rolls); the joystick's calibration
+ * mission map, P the colours, B held sees through the things in the way
+ * (modern/seethrough.h), K detonates (B in the original's), L the datalink
+ * (Ctrl+D rolls); the joystick's calibration
  * (Alt+C, which C's kneeling would come with) is bound to nothing: the game
  * port has no joystick (input.h). The other actions keep the original's
  * inputs. */
@@ -150,6 +153,8 @@ const ActionDefault GAME_MODERN_BINDINGS[] = {
     {Action::ITEM_WHEEL, "i I"},
     {Action::MISSION_MAP, "m M"},
     {Action::CHARACTER_COLOURS, "p P"},
+    {Action::SEE_THROUGH, "b B"},
+    {Action::DETONATE, "k K"},
     {Action::USE_ITEM, "u U g G pad_x"},
     {Action::USE_MEDKIT, "h H pad_up"},
     {Action::USE_ENERGY_CUBE, "t T"},

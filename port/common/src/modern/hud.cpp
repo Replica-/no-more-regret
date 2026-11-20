@@ -31,6 +31,7 @@
 #include "world.h"
 #include "missionmap.h"
 #include "upscaled.h"
+#include "seethrough.h"
 #include "type.h"
 #include "viewport.h"
 
@@ -341,6 +342,7 @@ void walkMarker()
 void drawHud()
 {
     hostShowFps(fpsSetting());
+    noteSeeThrough();
     if (worldActive != 0U) {
         noteSeen();
     }

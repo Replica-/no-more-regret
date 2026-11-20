@@ -17,6 +17,7 @@
 #include "kernel.h"
 #include "overlay.h"
 #include "screen.h"
+#include "seethrough.h"
 #include "shape.h"
 #include "shaphand.h"
 #include "status.h"
@@ -414,6 +415,11 @@ void drawUpscaled(bool silencer)
     int boxRight = -1;
     int boxBottom = -1;
     const auto note = [&](u16 item) {
+        /* None while it is drawn half through (seethrough.h): its mix
+         * shows. */
+        if (seeThrough(item)) {
+            return;
+        }
         /* The frame it is drawn in (turns.h), at DL_ItemNode::draw's place,
          * scrolled, on the frame; as last drawn when it has been. */
         u16 shape = itemShape[item];

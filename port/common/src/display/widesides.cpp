@@ -16,6 +16,7 @@
 #include "itemdata.h"
 #include "itemutil.h"
 #include "screen.h"
+#include "seethrough.h"
 #include "shaphand.h"
 #include "spmgr.h"
 #include "status.h"
@@ -361,7 +362,11 @@ void drawItem(Viewport &view, const SideItem &side, i16 shift, i16 down)
     if (effectsReplaces(shape)) {
         return;
     }
-    if ((flags & ITEM_FLIPPED) != 0) {
+    if (seeThrough(side.item)) {
+        /* The port's: half through while the player sees through
+         * (seethrough.h). */
+        drawSeeThrough(view, x, y, image, (flags & ITEM_FLIPPED) != 0);
+    } else if ((flags & ITEM_FLIPPED) != 0) {
         if ((flags & ITEM_INVISIBLE) != 0) {
             view.drawShapeMirroredTranslucent(x, y, image, paletteTables->translucent.get());
         } else if (info.translucent) {
