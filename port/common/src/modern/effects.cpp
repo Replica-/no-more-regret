@@ -191,9 +191,20 @@ bool makePicture(const u8 *frame, bool mirrored, int left, int top, bool hidden,
     return true;
 }
 
+void fireColour(float heat, float *red, float *green, float *blue);
+
+/* The explosions' fireballs (the grenades' and rockets' blasts): the
+ * palette's dull maroons and browns, drawn as a fire's colours, by their
+ * light. */
+bool isBlast(u16 shape)
+{
+    return shape == 0x320 || shape == 0x321 || shape == 0x323 || shape == 0x324 || shape == 0x325;
+}
+
 /* An effect's picture at its origin x,y on the screen: a glow of its own
  * shape twice, larger and added on, flickering, then the picture, smooth
- * (added on too when translucent: the jets of flame). */
+ * (added on too when translucent: the jets of flame); a blast in a fire's
+ * colours, gold to red, its light the heat. */
 void drawEffect(u16 shape, u16 frameNumber, float x, float y, bool mirrored, bool translucent)
 {
     ShapeFrame *image = cachedShapeFrame(shape, frameNumber);
@@ -213,6 +224,26 @@ void drawEffect(u16 shape, u16 frameNumber, float x, float y, bool mirrored, boo
     if (!makePicture(frame, mirrored, static_cast<int>(left + 0.5F), static_cast<int>(top + 0.5F),
                      !translucent, &w, &h)) {
         return;
+    }
+    if (isBlast(shape)) {
+        for (int i = 0; i < w * h; i++) {
+            if ((picture[i] & 0xffU) == 0U) {
+                continue;
+            }
+            const auto red = static_cast<float>((picture[i] >> 24) & 0xffU);
+            const auto green = static_cast<float>((picture[i] >> 16) & 0xffU);
+            const auto blue = static_cast<float>((picture[i] >> 8) & 0xffU);
+            const float light = ((red * 3) + (green * 6) + blue) / 2550.0F;
+            /* The darkest stay a deep red, smoke in the fire; the rest
+             * orange to gold, white in the hottest. */
+            const float heat = light < 0.06F ? 0.12F + (light * 2) : std::min(1.0F, 0.22F + (light * 1.25F));
+            float r = 0;
+            float g = 0;
+            float b = 0;
+            fireColour(heat, &r, &g, &b);
+            picture[i] = (static_cast<std::uint32_t>(r) << 24) | (static_cast<std::uint32_t>(g) << 16) |
+                         (static_cast<std::uint32_t>(b) << 8) | (picture[i] & 0xffU);
+        }
     }
     const float fw = static_cast<float>(w);
     const float fh = static_cast<float>(h);
