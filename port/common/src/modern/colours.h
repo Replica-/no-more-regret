@@ -27,6 +27,10 @@ void setColoursText(const std::string &text);
  * x,y, mirrored or not (DL_ItemNode::draw); false when they are the game's
  * own, which the caller draws. */
 bool drawInColours(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrored);
+/* Whether the Silencer drawn in shape is drawn in his colours: only in his
+ * own shape (not in another he dies in, burning, whose colours his ramps'
+ * entries are too). */
+[[nodiscard]] bool inHisColours(u16 shape);
 /* With the hardware scene (enhancements.h), drawInColours draws him in the
  * game's colours and keeps his pixels; this draws those still showing over
  * the screen in his colours exactly, as the screen's palette has them now

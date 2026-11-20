@@ -139,7 +139,7 @@ void DL_ItemNode::draw()
                                                       paletteTables->translucent.get());
             } else if (info->translucent) {
                 drawView.drawShapeMirroredRemapped(screenX - scrollX, screenY - scrollY, image, paletteTables->remap);
-            } else if (!nodeItem.isSilencer() ||
+            } else if (!nodeItem.isSilencer() || !inHisColours(shape) ||
                        !drawInColours(drawView, static_cast<i16>(screenX - scrollX),
                                       static_cast<i16>(screenY - scrollY), image, true)) {
                 /* The port's: the Silencer in his colours (colours.h). */
@@ -150,7 +150,7 @@ void DL_ItemNode::draw()
                                           paletteTables->translucent.get());
         } else if (info->translucent) {
             drawView.drawShapeRemapped(screenX - scrollX, screenY - scrollY, image, paletteTables->remap);
-        } else if (!nodeItem.isSilencer() ||
+        } else if (!nodeItem.isSilencer() || !inHisColours(shape) ||
                    !drawInColours(drawView, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY),
                                   image, false)) {
             drawView.drawShape(screenX - scrollX, screenY - scrollY, image);

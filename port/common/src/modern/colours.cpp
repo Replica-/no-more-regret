@@ -1078,3 +1078,8 @@ u8 silencerShownEntry(u8 entry)
     }
     return tableFor(chosen)[entry];
 }
+
+bool inHisColours(u16 shape)
+{
+    return shape == SILENCER_SHAPE;
+}
