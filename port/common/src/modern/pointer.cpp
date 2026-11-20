@@ -558,10 +558,28 @@ void screenRoll(Npc &npc, KeyEvent &key, bool right)
 
 }
 
-bool pointerKey(KeyEvent &key, Action action)
+bool pointerKey(KeyEvent &key, Action &action)
 {
     if (!pointerMode()) {
         return false;
+    }
+    /* The slide keys step to his side, the one towards the screen's right
+     * for the right key (the left's for the left): facing the screen's
+     * bottom (towards the player) his own right is the screen's left, which
+     * the right key would take him to. A side more up or down the screen
+     * than across it is his own. */
+    if (action == Action::SLIDE_LEFT || action == Action::SLIDE_RIGHT) {
+        const int facing = Npc(controlledActor).direction() & 0xf;
+        const int side = action == Action::SLIDE_RIGHT ? (facing + 4) & 0xf : (facing + 12) & 0xf;
+        /* The side on the screen, in halves: across x - y, down (x + y) / 2
+         * (DL_ItemNode::draw's place). */
+        const int across = 2 * (directionX16[side] - directionY16[side]);
+        const int down = directionX16[side] + directionY16[side];
+        const bool sideways = std::abs(across) > std::abs(down);
+        if (sideways &&
+            ((action == Action::SLIDE_RIGHT && across < 0) || (action == Action::SLIDE_LEFT && across > 0))) {
+            action = action == Action::SLIDE_RIGHT ? Action::SLIDE_LEFT : Action::SLIDE_RIGHT;
+        }
     }
     /* The forward key with the roll key held rolls forward (the
      * controller's roll); alone it walks to the pointer. */
