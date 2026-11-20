@@ -24,6 +24,8 @@
 #include "viewport.h"
 #include "world.h"
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
 
 extern SpriteEntry *&sprites;
@@ -425,6 +427,28 @@ int wideStatusDown()
         return 0;
     }
     return (height - SCREEN_HEIGHT) / 2;
+}
+
+void wideStatusBehind(const Rect &area)
+{
+    const int down = wideStatusDown();
+    if (down == 0 || pixels == nullptr || pixelsWidth != screenWideWidth() || pixelsHeight != screenWideHeight()) {
+        return;
+    }
+    const int side = (pixelsWidth - SCREEN_WIDTH) / 2;
+    const int top = (pixelsHeight - SCREEN_HEIGHT) / 2;
+    const ViewportPixels screen = drawViewport->pixels();
+    const int left = std::max<int>(area.left, 0);
+    const int right = std::min<int>(area.right, SCREEN_WIDTH - 1);
+    for (int y = std::max<int>(area.top, 0); y <= std::min<int>(area.bottom, SCREEN_HEIGHT - 1) && left <= right; y++) {
+        const int row = y + top + down;
+        if (row >= pixelsHeight) {
+            break;
+        }
+        std::memcpy(screen.pixels + screen.rows[y] + left,
+                    pixels + (static_cast<std::size_t>(row) * pixelsWidth) + side + left,
+                    static_cast<std::size_t>(right - left + 1));
+    }
 }
 
 bool wideSidesItemAt(u16 *item, i16 x, i16 y)

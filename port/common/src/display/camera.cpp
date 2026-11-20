@@ -730,6 +730,10 @@ void Camera::drawFrame()
     flushDirty();
     paintUpdate();
     drawSprites();
+    /* The port's: the wide screen's sides (widesides.h), before the status
+     * display, which shows the world there through it when it is moved
+     * down (wideStatusBehind). */
+    drawWideSides();
     drawStatus();
     drawPickups();
     if ((screenViewport->flags() & VIEWPORT_LARGE) != 0) {
@@ -748,8 +752,6 @@ void Camera::drawFrame()
     erasePickups();
     eraseStatus();
     restoreBackground();
-    /* The port's: the wide screen's sides (widesides.h). */
-    drawWideSides();
 }
 
 void setFollowedItem(u16 item)

@@ -18,6 +18,7 @@
 #include "input.h"
 #include "shapes.h"
 #include "screen.h"
+#include "widesides.h"
 
 u8 &statusShown = gameGlobal<u8>(0);
 
@@ -138,11 +139,24 @@ void drawStatus()
             }
         }
     }
+    /* The port's: moved to the wide frame's bottom (widesides.h), the
+     * parts are drawn each frame over the world round them there, which
+     * changes as it does. */
+    const bool moved = wideStatusDown() != 0;
+    if (moved) {
+        for (StatusPart &part : statusParts) {
+            part.changed = 1;
+            addDirtyRect(part.area);
+        }
+    }
     for (i16 index = 0; index < STATUS_PARTS; index++) {
         if (statusParts[index].changed != 0U) {
             StatusPart *part = &statusParts[index];
             statusViews[index]->blit(drawViewport, part->area.left, part->area.top, part->area.right,
                                      part->area.bottom);
+            if (moved) {
+                wideStatusBehind(part->area);
+            }
             if (index == STATUS_WEAPON) {
                 if (controlledActor == 1) {
                     const u16 weapon = Npc(controlledActor).activeWeapon();

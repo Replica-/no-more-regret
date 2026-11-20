@@ -14,6 +14,7 @@
 #include "common.h"
 
 class BasePalette;
+struct Rect;
 
 /* The widest and the tallest frame (system/video.h's WIDE_MOST and
  * TALL_MOST). */
@@ -23,6 +24,12 @@ const int TALL_FRAME_MOST = 864;
  * (screen.h's screenShowFrame): its rows below the screen, the screen's
  * place being in its middle; 0 when they stay where the screen has them. */
 int wideStatusDown();
+/* The world under where the status display's part at area is shown, moved
+ * down (wideStatusDown): the sides' pixels there drawn on drawViewport at
+ * area, under the part, so that what shows through it is the world round
+ * it, not the world where it was (drawStatus). Nothing when it is not
+ * moved or the sides are not drawn. */
+void wideStatusBehind(const Rect &area);
 /* The sides' pixels as last drawn, width x height of them (the screen's
  * middle not theirs); 0 for none. */
 [[nodiscard]] const u8 *wideSidesPixels(int *width, int *height);

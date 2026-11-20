@@ -233,6 +233,10 @@ struct Tile {
     u32 drawn;
     /* The frame it was made in, and the palette's entries it shows. */
     u32 made;
+    /* The status display's parts moved over it (their place on it), as
+     * when it was made: none shown over them, so a tile the scroll brings
+     * under one, or out from under it, is made again. */
+    std::uint64_t covered;
     std::uint64_t entries[4];
     u8 seen[TILE * TILE];
 };
@@ -710,8 +714,22 @@ void drawUpscaled(bool silencer)
             const int slot = tileSlot(tx, ty);
             Tile &tile = tiles[slot];
             const int across = right - left + 1;
+            std::uint64_t covered = 0;
+            for (int m = 0; m < movedCount; m++) {
+                const int coverLeft = std::max<int>(left, moved[m].left);
+                const int coverTop = std::max<int>(top, moved[m].top);
+                const int coverRight = std::min<int>(right, moved[m].right);
+                const int coverBottom = std::min<int>(bottom, moved[m].bottom);
+                if (coverLeft <= coverRight && coverTop <= coverBottom) {
+                    covered = (covered * 0x100000001b3ULL) ^
+                              (static_cast<std::uint64_t>(coverLeft - x) | static_cast<std::uint64_t>(coverTop - y) << 16 |
+                               static_cast<std::uint64_t>(coverRight - x) << 32 |
+                               static_cast<std::uint64_t>(coverBottom - y) << 48) ^
+                              static_cast<std::uint64_t>(m + 1);
+                }
+            }
             bool same = tile.left == left - x && tile.top == top - y && tile.right == right - x &&
-                        tile.bottom == bottom - y && tileFrames - tile.drawn < 60;
+                        tile.bottom == bottom - y && tile.covered == covered && tileFrames - tile.drawn < 60;
             for (int word = 0; same && word < 4; word++) {
                 for (std::uint64_t bits = tile.entries[word]; same && bits != 0U; bits &= bits - 1) {
                     same = fadeChanged[(word * 64) + __builtin_ctzll(bits)] <= tile.made;
@@ -731,6 +749,7 @@ void drawUpscaled(bool silencer)
                 tile.top = top - y;
                 tile.right = right - x;
                 tile.bottom = bottom - y;
+                tile.covered = covered;
                 tile.made = tileFrames;
                 std::fill(std::begin(tile.entries), std::end(tile.entries), 0U);
                 for (int row = top; row <= bottom; row++) {
