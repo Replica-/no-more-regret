@@ -943,7 +943,7 @@ void keepExact(Viewport &view, u8 *address, u8 written, std::uint32_t rgb)
 
 void drawColoursLayer()
 {
-    if (!hardwareSetting() || layerCount == 0 || worldActive == 0U || worldFrozen != 0U || drawViewport == nullptr) {
+    if (!hardwareSetting() || layerCount == 0 || worldActive == 0U || drawViewport == nullptr) {
         return;
     }
     followFrame();

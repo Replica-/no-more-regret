@@ -324,7 +324,7 @@ void releaseUpscaled()
 
 void drawUpscaled(bool silencer)
 {
-    if (!upscaledSetting() || !hardwareSetting() || worldActive == 0U || worldFrozen != 0U ||
+    if (!upscaledSetting() || !hardwareSetting() || worldActive == 0U ||
         drawViewport == nullptr) {
         return;
     }
