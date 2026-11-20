@@ -149,6 +149,49 @@ int main()
     view.height = 30;
     compare(renderer, view, "a smaller screen");
 
+    /* The overlay's pictures through the card's uploads: an odd width (rows
+     * padded on the way), its 0xRRGGBBAA words its colours. Two at once, a
+     * second time into the same texture. */
+    for (int round = 0; round < 2; round++) {
+        const int pw = 37;
+        const int ph = 9;
+        std::vector<std::uint32_t> words(static_cast<std::size_t>(pw) * ph);
+        for (int i = 0; i < pw * ph; i++) {
+            words[i] = (static_cast<std::uint32_t>((i * 5) + round) & 0xffU) << 24 |
+                       (static_cast<std::uint32_t>(i * 3) & 0xffU) << 16 | (static_cast<std::uint32_t>(255 - i) & 0xffU)
+                                                                                << 8 |
+                       0xffU;
+        }
+        static SDL_Texture *picture = SDL_CreateTexture(renderer, pictureFormat(), SDL_TEXTUREACCESS_STATIC, pw, ph);
+        SDL_Texture *other = SDL_CreateTexture(renderer, pictureFormat(), SDL_TEXTUREACCESS_STATIC, 300, 3);
+        std::vector<std::uint32_t> wide(300 * 3, 0x10203040U);
+        putPicture(picture, words.data(), pw);
+        putPicture(other, wide.data(), 300);
+        sendPictures();
+        SDL_Texture *target = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, pw, ph);
+        SDL_SetRenderTarget(renderer, target);
+        SDL_SetTextureBlendMode(picture, SDL_BLENDMODE_NONE);
+        SDL_RenderTexture(renderer, picture, nullptr, nullptr);
+        SDL_Surface *read = SDL_RenderReadPixels(renderer, nullptr);
+        SDL_SetRenderTarget(renderer, nullptr);
+        SDL_Surface *packed = read != nullptr ? SDL_ConvertSurface(read, SDL_PIXELFORMAT_RGBA8888) : nullptr;
+        int wrong = 0;
+        for (int y = 0; packed != nullptr && y < ph; y++) {
+            const auto *row = reinterpret_cast<const Uint32 *>(static_cast<const u8 *>(packed->pixels) +
+                                                               (y * packed->pitch));
+            for (int x = 0; x < pw; x++) {
+                wrong += row[x] != words[(y * pw) + x] ? 1 : 0;
+            }
+        }
+        check(packed != nullptr && wrong == 0,
+              "a picture through the card's uploads, round " + std::to_string(round) + ": " + std::to_string(wrong) +
+                  " pixels wrong");
+        SDL_DestroySurface(read);
+        SDL_DestroySurface(packed);
+        SDL_DestroyTexture(target);
+        SDL_DestroyTexture(other);
+    }
+
     /* A 16-bit screen is the window's to draw. */
     view.bits = 16;
     check(shadedScreen(view) == nullptr, "no shaded 16-bit screen");

@@ -14,6 +14,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdint>
+
 /* The window's renderer: the GPU renderer with the shaders when the card
  * takes them, else SDL's own choice; nullptr for none. */
 SDL_Renderer *openShading(SDL_Window *window);
@@ -25,5 +27,16 @@ void closeShading();
  * keeps: nullptr without the shaders or for a 16-bit screen, which the
  * window draws itself. */
 SDL_Texture *shadedScreen(const ScreenView &view);
+
+/* The overlay's pictures (0xRRGGBBAA words) in textures of the renderer:
+ * their format (with the shaders RGBA32, which the card holds as it is,
+ * the words made its bytes on the way; else RGBA8888), and a picture's
+ * pixels into one, width a row. With the shaders the pixels gather in one
+ * buffer of the card's, sendPictures sending them all at once before the
+ * draws that use them: SDL's GPU renderer's own upload takes milliseconds
+ * each with Direct3D 12. Without, SDL's upload at once. */
+[[nodiscard]] SDL_PixelFormat pictureFormat();
+void putPicture(SDL_Texture *texture, const std::uint32_t *pixels, int width);
+void sendPictures();
 
 #endif
