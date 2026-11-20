@@ -127,9 +127,13 @@ Uint8 *uploadRoom(Uint32 bytes)
 }
 
 /* Pixels of bytes each, rows of pitch bytes, into texture with the
- * uploads; words, 0xRRGGBBAA words to the card's bytes of RGBA32. Whether
- * they were gathered. */
-bool gather(SDL_Texture *texture, const void *pixels, int pitch, int bytes, bool words)
+ * uploads; words, 0xRRGGBBAA words to the card's bytes of RGBA32. Into the
+ * texture's top left width by height of them (0 for the texture's size), a
+ * texture larger given their last column and row once more beside them,
+ * so that its smooth scaling at their edges meets their own colours.
+ * Whether they were gathered. */
+bool gather(SDL_Texture *texture, const void *pixels, int pitch, int bytes, bool words, Uint32 width = 0,
+            Uint32 height = 0)
 {
     auto *card = static_cast<SDL_GPUTexture *>(
         SDL_GetPointerProperty(SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER, nullptr));
@@ -138,30 +142,38 @@ bool gather(SDL_Texture *texture, const void *pixels, int pitch, int bytes, bool
     if (card == nullptr || !SDL_GetTextureSize(texture, &w, &h)) {
         return false;
     }
-    const auto width = static_cast<Uint32>(w);
-    const auto height = static_cast<Uint32>(h);
-    const Uint32 rowBytes = aligned(width * static_cast<Uint32>(bytes), ROW_ALIGN);
-    Uint8 *room = uploadRoom(rowBytes * height);
+    if (width == 0) {
+        width = static_cast<Uint32>(w);
+        height = static_cast<Uint32>(h);
+    }
+    const Uint32 across = std::min(width + 1, static_cast<Uint32>(w));
+    const Uint32 down = std::min(height + 1, static_cast<Uint32>(h));
+    const Uint32 rowBytes = aligned(across * static_cast<Uint32>(bytes), ROW_ALIGN);
+    Uint8 *room = uploadRoom(rowBytes * down);
     if (room == nullptr) {
         return false;
     }
     const auto *from = static_cast<const Uint8 *>(pixels);
-    for (Uint32 y = 0; y < height; y++) {
+    for (Uint32 y = 0; y < down; y++) {
         Uint8 *row = room + (static_cast<std::size_t>(y) * rowBytes);
-        const Uint8 *source = from + (static_cast<std::size_t>(y) * static_cast<std::size_t>(pitch));
+        const Uint8 *source = from + (static_cast<std::size_t>(std::min(y, height - 1)) * static_cast<std::size_t>(pitch));
         if (!words) {
             std::memcpy(row, source, static_cast<std::size_t>(width) * static_cast<std::size_t>(bytes));
-            continue;
+        } else {
+            for (Uint32 x = 0; x < width; x++) {
+                Uint32 word = 0;
+                std::memcpy(&word, source + (x * 4), 4);
+                word = SDL_Swap32BE(word);
+                std::memcpy(row + (x * 4), &word, 4);
+            }
         }
-        for (Uint32 x = 0; x < width; x++) {
-            Uint32 word = 0;
-            std::memcpy(&word, source + (x * 4), 4);
-            word = SDL_Swap32BE(word);
-            std::memcpy(row + (x * 4), &word, 4);
+        if (across > width) {
+            std::memcpy(row + (width * static_cast<Uint32>(bytes)), row + ((width - 1) * static_cast<Uint32>(bytes)),
+                        static_cast<std::size_t>(bytes));
         }
     }
-    uploads.push_back({card, static_cast<Uint32>(room - uploadPixels), rowBytes / static_cast<Uint32>(bytes), width,
-                       height});
+    uploads.push_back({card, static_cast<Uint32>(room - uploadPixels), rowBytes / static_cast<Uint32>(bytes), across,
+                       down});
     return true;
 }
 
@@ -340,25 +352,30 @@ SDL_PixelFormat pictureFormat()
     return shading() ? SDL_PIXELFORMAT_RGBA32 : SDL_PIXELFORMAT_RGBA8888;
 }
 
-void putPicture(SDL_Texture *texture, const std::uint32_t *pixels, int width)
+void putPicture(SDL_Texture *texture, const std::uint32_t *pixels, int width, int height)
 {
     const int pitch = width * static_cast<int>(sizeof(std::uint32_t));
-    if (!shading()) {
-        SDL_UpdateTexture(texture, nullptr, pixels, pitch);
+    if (shading() && gather(texture, pixels, pitch, 4, true, static_cast<Uint32>(width), static_cast<Uint32>(height))) {
         return;
     }
-    if (gather(texture, pixels, pitch, 4, true)) {
-        return;
-    }
-    /* No room on the card: the words made bytes here, SDL's upload. */
+    /* Without the shaders, or no room on the card: SDL's upload, the words
+     * made bytes here with them, the last column and row once more beside
+     * them in a texture larger. */
     float w = 0;
     float h = 0;
     SDL_GetTextureSize(texture, &w, &h);
-    std::vector<std::uint32_t> bytes(static_cast<std::size_t>(width) * static_cast<std::size_t>(h));
-    for (std::size_t i = 0; i < bytes.size(); i++) {
-        bytes[i] = SDL_Swap32BE(pixels[i]);
+    const int across = std::min(width + 1, static_cast<int>(w));
+    const int down = std::min(height + 1, static_cast<int>(h));
+    std::vector<std::uint32_t> words(static_cast<std::size_t>(across) * static_cast<std::size_t>(down));
+    for (int y = 0; y < down; y++) {
+        for (int x = 0; x < across; x++) {
+            const std::uint32_t word =
+                pixels[(static_cast<std::size_t>(std::min(y, height - 1)) * width) + std::min(x, width - 1)];
+            words[(static_cast<std::size_t>(y) * across) + x] = shading() ? SDL_Swap32BE(word) : word;
+        }
     }
-    SDL_UpdateTexture(texture, nullptr, bytes.data(), pitch);
+    const SDL_Rect place{0, 0, across, down};
+    SDL_UpdateTexture(texture, &place, words.data(), across * static_cast<int>(sizeof(std::uint32_t)));
 }
 
 void sendPictures()

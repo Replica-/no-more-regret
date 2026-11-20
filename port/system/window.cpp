@@ -1199,7 +1199,7 @@ SDL_Texture *keptTexture(const OverlayShape &shape)
         float height = 0;
         if (SDL_GetTextureSize(found->second.texture, &width, &height) && width == static_cast<float>(shape.w) &&
             height == static_cast<float>(shape.h)) {
-            putPicture(found->second.texture, shape.kept->data(), shape.w);
+            putPicture(found->second.texture, shape.kept->data(), shape.w, shape.h);
             found->second.version = shape.version;
         } else {
             SDL_DestroyTexture(found->second.texture);
@@ -1212,7 +1212,7 @@ SDL_Texture *keptTexture(const OverlayShape &shape)
         if (made == nullptr) {
             return nullptr;
         }
-        putPicture(made, shape.kept->data(), shape.w);
+        putPicture(made, shape.kept->data(), shape.w, shape.h);
         found = keptTextures.insert_or_assign(shape.key, KeptTexture{shape.version, made, overlayDraws}).first;
     }
     found->second.used = overlayDraws;
@@ -1221,31 +1221,47 @@ SDL_Texture *keptTexture(const OverlayShape &shape)
 
 /* The window thread's textures of the pictures made again each frame (not
  * kept), by their size, to be used again the next: making one each frame
- * and destroying it costs the driver far more than its pixels. Those free
- * and the draw each was last used in, destroyed when unused for a while;
- * those of the draw being made. */
+ * and destroying it costs the driver far more than its pixels. A picture's
+ * size rounded up to a few steps (textureStep), the picture in the
+ * texture's top left: the pictures that change size from frame to frame
+ * (the effects', the Silencer's colours', the upscaled frames' layer) take
+ * the same few, not new ones frame after frame, many kept at once. Those
+ * free and the draw each was last used in, destroyed when unused for a
+ * while (SPARE_DRAWS); those of the draw being made. */
 struct SpareTexture {
     SDL_Texture *texture;
     std::uint64_t used;
 };
 std::unordered_multimap<std::uint64_t, SpareTexture> spareTextures;
 std::vector<std::pair<std::uint64_t, SDL_Texture *>> drawnTextures;
+const std::uint64_t SPARE_DRAWS = 60;
 
-/* A texture for a picture made this frame, its pixels put in. */
+/* A size of a picture's rounded up to the textures': to 32 pixels up to
+ * 256, to 128 up to 1024, else to 256; one pixel more first, for the
+ * picture's last column or row given once more (putPicture). */
+int textureStep(int size)
+{
+    const int step = size < 256 ? 32 : size < 1024 ? 128 : 256;
+    return (size + step) / step * step;
+}
+
+/* A texture for a picture made this frame, its pixels put in its top left. */
 SDL_Texture *frameTexture(const OverlayShape &shape, const std::uint32_t *pixels)
 {
-    const std::uint64_t size = (static_cast<std::uint64_t>(shape.w) << 32) | static_cast<std::uint32_t>(shape.h);
+    const int width = textureStep(shape.w);
+    const int height = textureStep(shape.h);
+    const std::uint64_t size = (static_cast<std::uint64_t>(width) << 32) | static_cast<std::uint32_t>(height);
     SDL_Texture *picture = nullptr;
     if (const auto spare = spareTextures.find(size); spare != spareTextures.end()) {
         picture = spare->second.texture;
         spareTextures.erase(spare);
     } else {
-        picture = SDL_CreateTexture(renderer, pictureFormat(), SDL_TEXTUREACCESS_STATIC, shape.w, shape.h);
+        picture = SDL_CreateTexture(renderer, pictureFormat(), SDL_TEXTUREACCESS_STATIC, width, height);
         if (picture == nullptr) {
             return nullptr;
         }
     }
-    putPicture(picture, pixels, shape.w);
+    putPicture(picture, pixels, shape.w, shape.h);
     drawnTextures.emplace_back(size, picture);
     return picture;
 }
@@ -1262,8 +1278,10 @@ void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenVie
                 ++entry;
             }
         }
+    }
+    if ((overlayDraws % SPARE_DRAWS) == 0) {
         for (auto entry = spareTextures.begin(); entry != spareTextures.end();) {
-            if (overlayDraws - entry->second.used > 240) {
+            if (overlayDraws - entry->second.used > SPARE_DRAWS) {
                 SDL_DestroyTexture(entry->second.texture);
                 entry = spareTextures.erase(entry);
             } else {
@@ -1375,7 +1393,9 @@ void drawOverlay(const Overlay &overlay, const SDL_FRect &place, const ScreenVie
             SDL_SetTextureScaleMode(picture, shape.sharp ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
             const SDL_FPoint a = at(shape.x[0], shape.y[0]);
             const SDL_FRect box{a.x, a.y, shape.x[1] * scale, shape.y[1] * scale};
-            SDL_RenderTexture(renderer, picture, nullptr, &box);
+            /* Its own part of the texture, a frame's in its top left. */
+            const SDL_FRect part{0, 0, static_cast<float>(shape.w), static_cast<float>(shape.h)};
+            SDL_RenderTexture(renderer, picture, &part, &box);
             break;
         }
         }

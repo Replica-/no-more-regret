@@ -31,12 +31,14 @@ SDL_Texture *shadedScreen(const ScreenView &view);
 /* The overlay's pictures (0xRRGGBBAA words) in textures of the renderer:
  * their format (with the shaders RGBA32, which the card holds as it is,
  * the words made its bytes on the way; else RGBA8888), and a picture's
- * pixels into one, width a row. With the shaders the pixels gather in one
+ * pixels into one, width by height of them in its top left (a texture
+ * larger given their last column and row once more beside them, for its
+ * smooth scaling at their edges). With the shaders the pixels gather in one
  * buffer of the card's, sendPictures sending them all at once before the
  * draws that use them: SDL's GPU renderer's own upload takes milliseconds
  * each with Direct3D 12. Without, SDL's upload at once. */
 [[nodiscard]] SDL_PixelFormat pictureFormat();
-void putPicture(SDL_Texture *texture, const std::uint32_t *pixels, int width);
+void putPicture(SDL_Texture *texture, const std::uint32_t *pixels, int width, int height);
 void sendPictures();
 
 #endif
