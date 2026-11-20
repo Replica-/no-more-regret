@@ -1040,6 +1040,60 @@ void fillTriangle(SDL_FPoint a, SDL_FPoint b, SDL_FPoint c, SDL_FColor colour)
  * the pause's two bars, the rewind's two plays back), and under it the frame and its time in
  * the replay's form (replay.h's replayTimeText, which --from and --to
  * take), on a dark box; nothing in the run's plain state. */
+/* The frames counter (host.h's hostShowFps): whether it is shown, the new
+ * frames the window has shown in the second counting and the second
+ * before's count. The window thread's but the switch. */
+std::atomic<bool> fpsShown{false};
+int fpsCounting = 0;
+int fpsLast = -1;
+std::chrono::steady_clock::time_point fpsSince = std::chrono::steady_clock::now();
+
+/* A new frame shown: counted, the count kept each second. */
+void countFrame()
+{
+    fpsCounting++;
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - fpsSince).count();
+    if (seconds >= 1.0) {
+        fpsLast = static_cast<int>((fpsCounting / seconds) + 0.5);
+        fpsCounting = 0;
+        fpsSince = now;
+    }
+}
+
+/* The count at the frame's top right corner, over a dark box, in the
+ * status's font and its size. */
+void drawFps(const SDL_FRect &frame)
+{
+    if (!fpsShown.load() || fpsLast < 0) {
+        return;
+    }
+    const float unit = frame.h / static_cast<float>(SCREEN_HEIGHT);
+    const float scale = std::max(1.0F, std::floor(unit * 0.75F));
+    const float glyph = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * scale;
+    const float pad = 2 * scale;
+    const std::string text = std::to_string(fpsLast) + " FPS";
+    const float width = static_cast<float>(text.size()) * glyph;
+    const float x = frame.x + frame.w - (4 * unit) - width - (2 * pad);
+    const float y = frame.y + (4 * unit);
+    const SDL_FRect box{x, y, width + (2 * pad), glyph + (2 * pad)};
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 160);
+    SDL_RenderFillRect(renderer, &box);
+    /* Green from 50 up, amber from 30, red below. */
+    if (fpsLast >= 50) {
+        SDL_SetRenderDrawColor(renderer, 110, 235, 120, SDL_ALPHA_OPAQUE);
+    } else if (fpsLast >= 30) {
+        SDL_SetRenderDrawColor(renderer, 240, 200, 80, SDL_ALPHA_OPAQUE);
+    } else {
+        SDL_SetRenderDrawColor(renderer, 240, 90, 80, SDL_ALPHA_OPAQUE);
+    }
+    SDL_SetRenderScale(renderer, scale, scale);
+    SDL_RenderDebugText(renderer, (x + pad) / scale, (y + pad) / scale, text.c_str());
+    SDL_SetRenderScale(renderer, 1, 1);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+}
+
 void drawStatus(const Status &status, const SDL_FRect &frame)
 {
     if (status.kind == Status::NONE) {
@@ -1326,6 +1380,7 @@ void drawScreen(bool withStatus)
     drawOverlay(shown.overlay, place, view);
     if (withStatus) {
         drawStatus(shown.status, framePlace(width, height, view.frameWidth, view.frameHeight));
+        drawFps(framePlace(width, height, view.frameWidth, view.frameHeight));
     }
 }
 
@@ -1613,7 +1668,11 @@ void keepWindow()
             std::fprintf(stderr, "%s: the game did not end when the window closed\n", PROFILE_NAME);
             windowExit(1);
         }
-        if ((window != nullptr) && (takeFrame() || redraw)) {
+        const bool newFrame = window != nullptr && takeFrame();
+        if (newFrame) {
+            countFrame();
+        }
+        if ((window != nullptr) && (newFrame || redraw)) {
             drawScreen(true);
             SDL_RenderPresent(renderer);
         }
@@ -2010,4 +2069,10 @@ void windowRewindEnd(const KeysHeld &held)
     inputs.push_back({.kind = Input::BUTTONS, .buttons = down});
     keysTaken = held;
     takenAfterE0 = false;
+}
+
+void hostShowFps(bool on)
+{
+    const SystemSide systemSide;
+    fpsShown.store(on);
 }

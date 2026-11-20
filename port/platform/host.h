@@ -30,6 +30,9 @@ void hostEndMessage(const char *text);
  * the original ended with): on the standard error, and in a run with a
  * window at the end of regret.log too (report.h). */
 void hostNotice(const char *text);
+/* The window's frames a second shown at its top right corner, or not
+ * (the enhancements' FPS COUNTER); the game sets it each frame. */
+void hostShowFps(bool on);
 /* Whether the run has the port's debug features: the rewind, the fast
  * forward, the states' save and load, the pause, a watched replay's
  * take-over, and the recording's and the replay's options. On with

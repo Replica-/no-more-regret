@@ -2,6 +2,7 @@
 #include "hud.h"
 #include "effects.h"
 #include "enhancements.h"
+#include "host.h"
 #include "gamestate.h"
 #include "camera.h"
 #include "cafont.h"
@@ -339,6 +340,7 @@ void walkMarker()
 
 void drawHud()
 {
+    hostShowFps(fpsSetting());
     if (worldActive != 0U) {
         noteSeen();
     }

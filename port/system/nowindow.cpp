@@ -36,6 +36,12 @@ void hostFullscreenAction(void (* /*unused*/)())
     const SystemSide systemSide;
 }
 
+/* No window: no frames counter to show. */
+void hostShowFps(bool /*on*/)
+{
+    const SystemSide systemSide;
+}
+
 u16 displayWideWidth()
 {
     return 0;

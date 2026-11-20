@@ -23,6 +23,9 @@ void setHardwareSetting(bool on);
 /* The upscaled textures (upscaled.h, on by default; with the hardware
  * scene only). */
 [[nodiscard]] bool upscaledSetting();
+/* The frames a second shown at the window's top right (host.h's
+ * hostShowFps, on by default). */
+[[nodiscard]] bool fpsSetting();
 /* Their lines of enhanced.cfg, and a line read: true when it was one of
  * theirs. */
 [[nodiscard]] std::string enhancementsText();
