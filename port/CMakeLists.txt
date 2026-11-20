@@ -237,7 +237,7 @@ endif()
 # game's libraries and the system layer call each other: a target links
 # them as one group (PORT_LIBRARIES).
 file(GLOB SYSTEM_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/system/*.cpp)
-foreach(name main window nowindow splash newdelete gamememory)
+foreach(name main window nowindow splash shading newdelete gamememory)
   list(REMOVE_ITEM SYSTEM_SOURCES ${PROJECT_SOURCE_DIR}/system/${name}.cpp)
 endforeach()
 add_library(port_system_objects OBJECT ${SYSTEM_SOURCES})
@@ -249,7 +249,8 @@ target_include_directories(port_system PUBLIC system)
 target_link_libraries(port_system PUBLIC game_unified)
 set(PORT_LIBRARIES "$<LINK_GROUP:RESCAN,game_unified,asm_unified,port_system,asylum,xan,game_memory,compat>")
 if(PORT_WINDOW)
-  set(WINDOW_SOURCE ${PROJECT_SOURCE_DIR}/system/window.cpp ${PROJECT_SOURCE_DIR}/system/splash.cpp)
+  set(WINDOW_SOURCE ${PROJECT_SOURCE_DIR}/system/window.cpp ${PROJECT_SOURCE_DIR}/system/splash.cpp
+    ${PROJECT_SOURCE_DIR}/system/shading.cpp)
 else()
   set(WINDOW_SOURCE ${PROJECT_SOURCE_DIR}/system/nowindow.cpp)
 endif()

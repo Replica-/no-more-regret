@@ -116,7 +116,8 @@ add_test(NAME video COMMAND video_test)
 
 # The window: the screen's picture in it, with SDL's dummy driver.
 if(PORT_WINDOW)
-  add_executable(window_test unit/regret_values.cpp unit/window_test.cpp ${PROJECT_SOURCE_DIR}/system/window.cpp)
+  add_executable(window_test unit/regret_values.cpp unit/window_test.cpp ${PROJECT_SOURCE_DIR}/system/window.cpp
+    ${PROJECT_SOURCE_DIR}/system/shading.cpp)
   game_target(window_test unified)
   target_include_directories(window_test PRIVATE ${PROJECT_SOURCE_DIR}/system)
   target_link_libraries(window_test PRIVATE ${PORT_LIBRARIES} SDL3::SDL3)
@@ -128,6 +129,15 @@ if(PORT_WINDOW)
   # SDL and the run ends, neither hanging nor crashing.
   add_test(NAME window_exit COMMAND window_test --exit)
   set_tests_properties(window_exit PROPERTIES TIMEOUT 30 PASS_REGULAR_EXPRESSION "the game thread exits")
+  # The shading on the graphics card (shading.h) against the window's own
+  # colours, in a hidden window: skipped without a display or a card that
+  # takes the shaders.
+  add_executable(shading_test unit/shading_test.cpp ${PROJECT_SOURCE_DIR}/system/shading.cpp)
+  target_include_directories(shading_test PRIVATE ${PROJECT_SOURCE_DIR}/system)
+  game_target(shading_test unified)
+  target_link_libraries(shading_test PRIVATE SDL3::SDL3)
+  add_test(NAME shading COMMAND shading_test)
+  set_tests_properties(shading PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # The format: every C++ file of the port is as clang-format 20 writes it

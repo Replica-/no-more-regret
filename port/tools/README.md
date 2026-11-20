@@ -25,6 +25,7 @@ write.
 | Tool | What it writes | Run by |
 |---|---|---|
 | `make_unified_values.py` | `unified/src`'s value headers: for each value the games' `<name>_game.h` give, the one program's run-time choice of the game's | ctest `unified_values_current` |
+| `shaders.sh` | The window's shaders (`system/shaders/NAME.inc`, from `NAME.hlsl`): each as DXIL and, with a DXC that makes it (`DXC=`; not the Windows SDK's), SPIR-V. A bash script, needing DXC; the build takes the `.inc` files as they are | by hand, after changing a shader |
 | `make_text.py` | The Hangul glyphs (`common/src/text/hangul_glyphs.cpp`, from `common/fonts/ko.png`) and each game's translations (`<game>/src/text/translations.cpp`, from `port/lang`) | ctest `text` |
 
 ## The games' data

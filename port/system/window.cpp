@@ -26,7 +26,9 @@
  * around it; a window smaller than one keeps the 4:3 shape. The 200 rows
  * of mode 13h come to a height that is no whole multiple of them, which
  * SDL's pixel-art scaling keeps even. In a text mode the window is black:
- * the text goes to the standard output (console.cpp).
+ * the text goes to the standard output (console.cpp). The 8-bit screen's
+ * colours are looked up on the graphics card when it takes the port's
+ * shaders (shading.h), else here.
  *
  * The keys go to the keyboard (pc.h's keyboardScan) as the scan codes of
  * set 1 a PC keyboard sends, E0h before the extended ones, at the time of
@@ -82,6 +84,7 @@
 #include "input.h"
 #include "video.h"
 #include "overlayshapes.h"
+#include "shading.h"
 #include "overlay.h"
 #include "portversion.h"
 #include "profile.h"
@@ -301,6 +304,7 @@ void closeWindow()
     if (texture != nullptr) {
         SDL_DestroyTexture(texture);
     }
+    closeShading();
     if (renderer != nullptr) {
         SDL_DestroyRenderer(renderer);
     }
@@ -453,8 +457,9 @@ void openWindow()
     /* With the wide screen, maximized: the frame the window's (followPicture). */
     const SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
                                   (wideShaped && !fullscreen ? SDL_WINDOW_MAXIMIZED : 0);
-    if (!SDL_CreateWindowAndRenderer(PROFILE_TITLE, frameWidth * scale, SCREEN_HEIGHT * scale, flags, &window,
-                                     &renderer)) {
+    window = SDL_CreateWindow(PROFILE_TITLE, frameWidth * scale, SCREEN_HEIGHT * scale, flags);
+    renderer = window != nullptr ? openShading(window) : nullptr;
+    if (renderer == nullptr) {
         failure("no window");
     }
     int pixelWidth = 0;
@@ -1364,8 +1369,12 @@ void drawScreen(bool withStatus)
             followPicture(pixelWidth, pixelHeight);
         }
     }
-    if (!screenTexture(view)) {
-        failure("no picture");
+    SDL_Texture *picture = shadedScreen(view);
+    if (picture == nullptr) {
+        if (!screenTexture(view)) {
+            failure("no picture");
+        }
+        picture = texture;
     }
     const SDL_FRect place = picturePlace(framePlace(width, height, view.frameWidth, view.frameHeight), view);
     pictureScaleX = place.w / static_cast<float>(view.width) / SDL_GetWindowPixelDensity(window);
@@ -1375,8 +1384,8 @@ void drawScreen(bool withStatus)
     const int w = static_cast<int>(place.w);
     const int h = static_cast<int>(place.h);
     const bool whole = w % view.width == 0 && h % view.height == 0 && w / view.width == h / view.height;
-    SDL_SetTextureScaleMode(texture, whole ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_PIXELART);
-    SDL_RenderTexture(renderer, texture, nullptr, &place);
+    SDL_SetTextureScaleMode(picture, whole ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_PIXELART);
+    SDL_RenderTexture(renderer, picture, nullptr, &place);
     drawOverlay(shown.overlay, place, view);
     if (withStatus) {
         drawStatus(shown.status, framePlace(width, height, view.frameWidth, view.frameHeight));
