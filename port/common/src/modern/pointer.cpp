@@ -23,6 +23,7 @@
 #include "mousectl.h"
 #include "input.h"
 #include "screen.h"
+#include "seethrough.h"
 #include "status.h"
 #include "newgump.h"
 #include "npc.h"
@@ -448,6 +449,11 @@ bool pointerItemInReach(u16 item)
 u16 pointerItemUnder(i16 x, i16 y)
 {
     u16 found = 0;
+    /* A corpse hidden behind what stands in front of it first
+     * (seethrough.h). */
+    if (corpseAt(&found, x, y) && usable(Item(found))) {
+        return found;
+    }
     if (!itemAt(&found, x, y)) {
         return 0;
     }

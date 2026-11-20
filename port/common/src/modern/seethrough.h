@@ -26,6 +26,11 @@ void noteSeeThrough();
  * item. A body: an NPC dead or dying, or a dead one's container (the D_
  * classes'). */
 bool seeThroughBodyAt(u16 *item, i16 x, i16 y);
+/* A corpse under the pointer whatever is drawn in front of it, seeing
+ * through or not (pointer.h's pointerItemUnder: a click searches it before
+ * what hides it): whether one is, in item. A corpse: an NPC dead or dying,
+ * or a dead one's container (a D_ usecode class's). */
+bool corpseAt(u16 *item, i16 x, i16 y);
 /* Draws frame half through at x,y of view, mirrored or not
  * (DL_ItemNode::draw). */
 void drawSeeThrough(Viewport &view, i16 x, i16 y, ShapeFrame *frame, bool mirrored);

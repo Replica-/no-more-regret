@@ -14,9 +14,11 @@
 #include "npc.h"
 #include "screen.h"
 #include "type.h"
+#include "uprocess.h"
 #include "viewport.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iterator>
 
 namespace {
@@ -75,6 +77,36 @@ bool isBody(u16 item)
     return it.family() == FAMILY_CONTAINER;
 }
 
+/* A corpse: an NPC dead or dying, or a dead one's container (a D_ usecode
+ * class's). */
+bool isCorpse(u16 item)
+{
+    Item it(item);
+    if (!it.isValid() || item == controlledActor) {
+        return false;
+    }
+    if (it.isNpc()) {
+        return Npc(item).isDead() != 0U;
+    }
+    if (it.family() != FAMILY_CONTAINER || classes == nullptr || classes->unitFile == nullptr) {
+        return false;
+    }
+    return std::strncmp(classes->info(classOf(&it)).name, "D_", 2) == 0;
+}
+
+}
+
+bool corpseAt(u16 *item, i16 x, i16 y)
+{
+    if (worldActive == 0U || x < 0 || x >= SCREEN_WIDTH || y < 0 || y >= SCREEN_HEIGHT) {
+        return false;
+    }
+    const u16 node = wantedNodeAt(x, y, isCorpse);
+    if (node == 0U) {
+        return false;
+    }
+    *item = static_cast<DL_ItemNode *>(nodeOf(node))->item;
+    return true;
 }
 
 bool seeThroughBodyAt(u16 *item, i16 x, i16 y)
