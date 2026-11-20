@@ -14,6 +14,7 @@
 #include "item.h"
 #include "itemcach.h"
 #include "itemdata.h"
+#include "kernel.h"
 #include "overlay.h"
 #include "screen.h"
 #include "shape.h"
@@ -145,6 +146,19 @@ struct Drawing {
  * shown yet (drawn, not yet copied to the video memory). */
 Drawing silencerDrawn{};
 Drawing silencerBefore{};
+/* Each item as last drawn (any, a guard walking, a fan turning: laid over
+ * as the screen shows it, not as it is since), and the map they were drawn
+ * on. */
+struct Drawn1 {
+    u16 shape;
+    u16 frame;
+    i16 x;
+    i16 y;
+    u8 mirrored;
+    u8 any;
+};
+Drawn1 itemDrawn[ITEMS];
+u16 drawnMap = 0xffff;
 
 /* How many of a drawing's pixels (every seventh) the screen shows, in his
  * colours' entries; shown is the frame's pixel at a column and row. */
@@ -279,6 +293,16 @@ int brightness(int red, int green, int blue)
 
 void upscaledDrawn(u16 item, u16 shape, u16 frame, i16 x, i16 y, bool mirrored)
 {
+    if (drawnMap != currentMap) {
+        drawnMap = currentMap;
+        std::fill(std::begin(itemDrawn), std::end(itemDrawn), Drawn1{});
+    }
+    if (item < ITEMS) {
+        itemDrawn[item] = Drawn1{shape, frame, x, y, static_cast<u8>(mirrored ? 1 : 0), 1};
+    }
+    if (!Item(item).isSilencer()) {
+        return;
+    }
     const Drawing now{true, item, shape, frame, x, y, mirrored};
     if (now.frame != silencerDrawn.frame || now.x != silencerDrawn.x || now.y != silencerDrawn.y ||
         now.mirrored != silencerDrawn.mirrored) {
@@ -372,7 +396,7 @@ void drawUpscaled(bool silencer)
     int boxBottom = -1;
     const auto note = [&](u16 item) {
         /* The frame it is drawn in (turns.h), at DL_ItemNode::draw's place,
-         * scrolled, on the frame; the Silencer's as last drawn. */
+         * scrolled, on the frame; as last drawn when it has been. */
         u16 shape = itemShape[item];
         u16 frameNumber = turnFrame(item, Item(item).frame());
         const i16 hx = static_cast<i16>(itemX[item] >> 1);
@@ -380,6 +404,14 @@ void drawUpscaled(bool silencer)
         int x = hx - hy - scrollX + frameLeft;
         int y = (hx >> 1) + (hy >> 1) - itemZ[item] - scrollY + frameTop;
         bool mirrored = (itemFlags[item] & ITEM_FLIPPED) != 0;
+        if (!silencer && item < ITEMS && itemDrawn[item].any != 0U && drawnMap == currentMap) {
+            const Drawn1 &last = itemDrawn[item];
+            shape = last.shape;
+            frameNumber = last.frame;
+            x = last.x - scrollX + frameLeft;
+            y = last.y - scrollY + frameTop;
+            mirrored = last.mirrored != 0U;
+        }
         if (silencer && silencerDrawn.any && silencerDrawn.item == item) {
             /* Whichever of his last two drawings the screen shows more
              * of. */

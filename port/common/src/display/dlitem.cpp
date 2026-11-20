@@ -128,11 +128,9 @@ void DL_ItemNode::draw()
             paintShadow(nodeItem.id, image, static_cast<i16>(screenX - scrollX), static_cast<i16>(screenY - scrollY),
                         (nodeFlags & ITEM_FLIPPED) != 0, drawView);
         }
-        /* The port's: the Silencer as drawn, for his upscaled frame
+        /* The port's: the item as drawn, for its upscaled frame
          * (upscaled.h). */
-        if (nodeItem.isSilencer()) {
-            upscaledDrawn(nodeItem.id, shape, frame, screenX, screenY, (nodeFlags & ITEM_FLIPPED) != 0);
-        }
+        upscaledDrawn(nodeItem.id, shape, frame, screenX, screenY, (nodeFlags & ITEM_FLIPPED) != 0);
         if ((nodeFlags & ITEM_FLIPPED) != 0) {
             if ((nodeFlags & ITEM_INVISIBLE) != 0) {
                 drawView.drawShapeMirroredTranslucent(screenX - scrollX, screenY - scrollY, image,
